@@ -31,6 +31,7 @@ class Krenamer(QWidget):
         else:
             settings = {}
 
+
         settings.setdefault("path_history", [])
         settings.setdefault("match_history", [])
         settings.setdefault("extension_history", [])

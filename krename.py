@@ -1,4 +1,4 @@
-import sys, os, re, json, logging, subprocess
+import sys, os, re, json, logging, subprocess, copy
 from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
@@ -6,7 +6,9 @@ from PyQt5.QtWidgets import (
     QTabWidget, QSpinBox, QPlainTextEdit, QAbstractItemView, QCompleter,  QDialog, QVBoxLayout
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor
 import concurrent.futures
+from tree_data import TreeData
 
 SETTINGS_FILE = "krename_settings.json"
 
@@ -14,10 +16,12 @@ class Krenamer(QWidget):
     def __init__(self):
         super().__init__()
         self.settings = self.load_settings()
+        self.file_data = None
+        self.mirror_data = None
 
         logging_level = getattr(logging, self.settings.get("logging_level", "DEBUG"))
         debug_logfile_location = self.settings["debug_logfile_location"]
-        debug_log_file = os.path.join(debug_logfile_location,'KRENAME.log')
+        debug_log_file = os.path.join(debug_logfile_location, 'KRENAMER.log')
         open(debug_log_file, 'w').close()
         logging.basicConfig(filename=debug_log_file, level=logging_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -30,7 +34,6 @@ class Krenamer(QWidget):
                 settings = json.load(f)
         else:
             settings = {}
-
 
         settings.setdefault("path_history", [])
         settings.setdefault("match_history", [])
@@ -286,54 +289,64 @@ class Krenamer(QWidget):
 
     def setup_connections(self):
         self.browse_button.clicked.connect(self.browse_directory)
-        self.load_button.clicked.connect(self.update_file_tree)
-        self.path_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.path_combo, "path_history"))
-        self.match_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.match_combo, "match_history"))
-        self.extension_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.extension_combo, "extension_history"))
-        self.search_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.search_combo, "search_history"))
-        self.replace_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.replace_combo, "replace_history"))
-        self.add_text_combo.lineEdit().editingFinished.connect(lambda: self.textfield_update_save(self.add_text_combo, "add_text_history"))
-        self.add_text_position_spinbox.valueChanged.connect(self.update_mirror_tree)
-        self.add_text_checkbox.stateChanged.connect(self.update_mirror_tree)
-        self.case_sensitive_checkbox.stateChanged.connect(self.update_mirror_tree)
-        self.search_replace_checkbox.stateChanged.connect(self.update_mirror_tree)
+        self.load_button.clicked.connect(self.update_file_data)
+        self.path_combo.activated.connect(
+            lambda: self.on_combobox_activated(self.path_combo, "path_history"))
+        self.match_combo.activated.connect(
+            lambda: self.on_combobox_activated(self.match_combo, "match_history"))
+        self.extension_combo.activated.connect(
+            lambda: self.on_combobox_activated(self.extension_combo, "extension_history"))
+        self.search_combo.lineEdit().editingFinished.connect(
+            lambda: self.textfield_update_save(self.search_combo, "search_history"))
+        self.replace_combo.lineEdit().editingFinished.connect(
+            lambda: self.textfield_update_save(self.replace_combo, "replace_history"))
+        self.add_text_combo.lineEdit().editingFinished.connect(
+            lambda: self.textfield_update_save(self.add_text_combo, "add_text_history"))
+        self.add_text_position_spinbox.valueChanged.connect(self.update_mirror_data)
+        self.add_text_checkbox.stateChanged.connect(self.update_mirror_data)
+        self.case_sensitive_checkbox.stateChanged.connect(self.update_mirror_data)
+        self.search_replace_checkbox.stateChanged.connect(self.update_mirror_data)
+
+        self.match_case_sensitive_checkbox.stateChanged.connect(self.update_file_data)
+        self.include_subfolders_checkbox.stateChanged.connect(self.update_file_data)
 
         self.clear_match_button.clicked.connect(self.clear_match_string)
         self.clear_extension_button.clicked.connect(self.clear_extension_string)
-        self.file_tree.itemChanged.connect(self.handle_item_change)
+
         self.file_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_tree.customContextMenuRequested.connect(self.open_context_menu)
-        self.include_subfolders_checkbox.stateChanged.connect(self.update_file_tree)
-        self.match_case_sensitive_checkbox.stateChanged.connect(self.update_file_tree)
 
-        self.rename_button.clicked.connect(self.rename_files)
-        self.mirror_tree.itemChanged.connect(self.handle_mirror_item_change)
+        self.file_tree.itemChanged.connect(self.handle_tree_item_change)
+        self.mirror_tree.itemChanged.connect(self.handle_tree_item_change)
+
+        self.file_tree.verticalScrollBar().valueChanged.connect(self.sync_scroll)
+        self.mirror_tree.verticalScrollBar().valueChanged.connect(self.sync_scroll)
+
+        self.file_tree.itemExpanded.connect(
+            lambda item: self.sync_item_expansion(item, self.mirror_tree, True))
+        self.file_tree.itemCollapsed.connect(
+            lambda item: self.sync_item_expansion(item, self.mirror_tree, False))
+        self.mirror_tree.itemExpanded.connect(
+            lambda item: self.sync_item_expansion(item, self.file_tree, True))
+        self.mirror_tree.itemCollapsed.connect(
+            lambda item: self.sync_item_expansion(item, self.file_tree, False))
+
         self.logfile_browse_button.clicked.connect(self.browse_logfile_location)
 
-        # Connect the activated signal to handle the selection
-        self.path_combo.activated.connect(lambda: self.on_combobox_activated(self.path_combo, "path_history"))
-        self.match_combo.activated.connect(lambda: self.on_combobox_activated(self.match_combo,"match_history"))
-        self.extension_combo.activated.connect(lambda: self.on_combobox_activated(self.extension_combo,"extension_history"))
-        self.search_combo.activated.connect(lambda: self.on_combobox_activated(self.search_combo,"search_history"))
-        self.replace_combo.activated.connect(lambda: self.on_combobox_activated(self.replace_combo,"replace_history"))
-        self.add_text_combo.activated.connect(lambda: self.on_combobox_activated(self.add_text_combo,"add_text_history"))
+        self.match_combo.lineEdit().editingFinished.connect(self.update_mirror_data)
+        self.extension_combo.lineEdit().editingFinished.connect(self.update_mirror_data)
+        self.search_combo.lineEdit().editingFinished.connect(self.update_mirror_data)
+        self.replace_combo.lineEdit().editingFinished.connect(self.update_mirror_data)
+        self.add_text_combo.lineEdit().editingFinished.connect(self.update_mirror_data)
+        self.add_text_position_spinbox.valueChanged.connect(self.update_mirror_data)
 
-        self.match_combo.lineEdit().editingFinished.connect(self.update_mirror_tree)
-        self.extension_combo.lineEdit().editingFinished.connect(self.update_mirror_tree)
-        self.search_combo.lineEdit().editingFinished.connect(self.update_mirror_tree)
-        self.replace_combo.lineEdit().editingFinished.connect(self.update_mirror_tree)
-        self.add_text_combo.lineEdit().editingFinished.connect(self.update_mirror_tree)
-        self.add_text_position_spinbox.valueChanged.connect(self.update_mirror_tree)
-
-        # Connect scroll bars to sync_scroll
-        self.file_tree.verticalScrollBar().valueChanged.connect(lambda value: self.sync_scroll(value))
-        self.mirror_tree.verticalScrollBar().valueChanged.connect(lambda value: self.sync_scroll(value))
+        self.rename_button.clicked.connect(self.rename_files)
 
     def on_combobox_activated(self, combo_box, history_key):
         if history_key in ["path_history", "match_history", "extension_history"]:
-            self.update_file_tree()
+            self.update_file_data()
         else:
-            self.update_mirror_tree()
+            self.update_mirror_data()
         self.textfield_update_save(combo_box, history_key)
 
     def textfield_update_save(self, combo_box, history_key):
@@ -362,7 +375,7 @@ class Krenamer(QWidget):
             self.path_combo.clear()
             self.path_combo.addItems(self.settings["path_history"])
             self.path_combo.setCurrentText(directory)
-            self.update_file_tree()
+            self.update_file_data()
 
     def clear_match_string(self):
         self.match_combo.setCurrentText("")
@@ -370,7 +383,7 @@ class Krenamer(QWidget):
 
     def clear_extension_string(self):
         self.extension_combo.setCurrentText("")
-        self.update_file_tree()
+        self.update_file_data()
 
     def get_all_file_paths(self, directory, include_subfolders):
         all_files = []
@@ -410,203 +423,135 @@ class Krenamer(QWidget):
             tree_structure[root].append(file)
         return tree_structure
 
-    def populate_file_tree(self, tree_structure):
-        self.file_tree.setUpdatesEnabled(False)  # Disable updates temporarily
-        self.file_tree.clear()
-
-        # Optimization: create a dictionary to store parent items
-        parent_items = {}
-
-        # Add all items in one go
-        for root, files in tree_structure.items():
-            logging.debug(f"root: {root}")
-            parent = self.get_or_create_parent_item(self.file_tree, root, parent_items)
-            new_items = []
-            for file in files:
-                full_path = os.path.join(root, file)
-                item = QTreeWidgetItem([file])
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(0, Qt.Checked)
-                item.setData(0, Qt.UserRole, {"is_file": True, "full_path": full_path})
-                new_items.append(item)
-            parent.addChildren(new_items)
-
-        self.file_tree.setUpdatesEnabled(True)  # Re-enable updates
-        self.update_mirror_tree()
-
-    def get_or_create_parent_item(self, tree_widget, path, parent_items):
-        # Check if this path is already cached
-        if path in parent_items:
-            return parent_items[path]
-
-        # Split the path into its components
-        parts = path.split(os.sep)
-
-        # Initialize the parent as the root of the tree
-        parent = tree_widget.invisibleRootItem()
-
-        # Traverse the path components
-        current_path = ""
-        for part in parts:
-            if current_path:
-                current_path = os.path.join(current_path, part)
-            else:
-                current_path = part
-
-            # If the parent item for this path doesn't exist, create it
-            if current_path not in parent_items:
-                new_item = QTreeWidgetItem([part])
-                new_item.setFlags(new_item.flags() | Qt.ItemIsUserCheckable)
-                new_item.setCheckState(0, Qt.Checked)
-                new_item.setData(0, Qt.UserRole, {"is_file": False, "full_path": current_path})
-                parent.addChild(new_item)
-                parent_items[current_path] = new_item
-                new_item.setExpanded(True)
-            parent = parent_items[current_path]
-
-        return parent
-
-    def update_file_tree(self):
-        logging.debug("\n\n")
-
-        logging.debug("Starting update_file_tree")
-
+    def update_file_data(self):
         directory = self.path_combo.currentText().replace('/', '\\')
         match_string = self.match_combo.currentText()
         extension_string = self.extension_combo.currentText()
         include_subfolders = self.include_subfolders_checkbox.isChecked()
 
-        logging.debug(f"Directory: {directory}")
-        logging.debug(f"Match String: {match_string}")
-        logging.debug(f"Extension String: {extension_string}")
-        logging.debug(f"Include Subfolders: {include_subfolders}")
-
         if directory and os.path.isdir(directory):
+            self.file_data = self.build_file_data(directory, match_string, extension_string, include_subfolders)
+            if self.file_data:
+                self.populate_tree_widget(self.file_tree, self.file_data)
+                self.update_mirror_data()
+            else:
+                logging.error(f"No file data built for directory: {directory}")
+        else:
+            logging.error(f"Invalid directory: {directory}")
 
-            logging.debug("Collecting all file paths")
-            all_files = self.get_all_file_paths(directory, include_subfolders)
-            logging.debug(f"Total files collected: {len(all_files)}")
+    def build_file_data(self, directory, match_string, extension_string, include_subfolders):
+        root = TreeData(os.path.basename(directory), directory, is_file=False)
 
-            logging.debug("Filtering file paths")
-            filtered_files = self.filter_paths(all_files, match_string, extension_string)
-            logging.debug(f"Total files after filtering: {len(filtered_files)}")
+        def add_files_recursively(parent, path):
+            try:
+                children = []
+                with os.scandir(path) as it:
+                    for entry in it:
+                        if entry.is_file():
+                            if self.matches_criteria(entry.name, match_string, extension_string):
+                                child = TreeData(entry.name, entry.path)
+                                children.append(child)
+                        elif entry.is_dir() and include_subfolders:
+                            child = TreeData(entry.name, entry.path, is_file=False)
+                            if add_files_recursively(child, entry.path) or self.matches_criteria(entry.name,
+                                                                                                 match_string, ""):
+                                children.append(child)
 
-            logging.debug("Building tree structure")
-            tree_structure = self.build_tree_structure(filtered_files)
+                if children or self.matches_criteria(os.path.basename(path), match_string, ""):
+                    for child in children:
+                        parent.add_child(child)
+                    return True
+                return False
 
-            logging.debug("Populating file tree")
-            self.populate_file_tree(tree_structure)
+            except PermissionError:
+                logging.warning(f"Permission denied: {path}")
+                return False
 
-        logging.debug("Finished update_file_tree")
+        add_files_recursively(root, directory)
+        return root
 
-    def update_mirror_tree(self):
+    def matches_criteria(self, filename, match_string, extension_string):
+        if match_string and not re.search(match_string, filename, re.IGNORECASE):
+            return False
+        if extension_string:
+            ext = os.path.splitext(filename)[1][1:]
+            if ext not in extension_string.split(','):
+                return False
+        return True
 
+    def populate_tree_widget(self, tree_widget, file_data):
+        tree_widget.clear()
+
+        def build_tree_item(data):
+            item = QTreeWidgetItem([data.name])
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.Checked if data.is_ticked else Qt.Unchecked)
+            item.setForeground(0, QColor(data.color))
+            item.setData(0, Qt.UserRole, data)
+
+            for child in data.children:
+                child_item = build_tree_item(child)
+                item.addChild(child_item)
+
+            return item
+
+        root_item = build_tree_item(file_data)
+        tree_widget.addTopLevelItem(root_item)
+        tree_widget.expandAll()
+
+    def update_mirror_data(self):
+        if not self.file_data:
+            return
+
+        self.mirror_data = copy.deepcopy(self.file_data)
+        self.apply_transformations(self.mirror_data)
+        self.populate_tree_widget(self.mirror_tree, self.mirror_data)
+        self.update_rename_button_state()
+
+    def apply_transformations(self, data):
         search_replace = self.search_replace_checkbox.isChecked()
-        search_string = self.search_combo.currentText()
+        search_string = re.escape(self.search_combo.currentText())
         replace_string = self.replace_combo.currentText()
         case_sensitive = self.case_sensitive_checkbox.isChecked()
         add_text = self.add_text_checkbox.isChecked()
         add_text_value = self.add_text_combo.currentText()
         add_text_position = self.add_text_position_spinbox.value()
 
-        self.mirror_tree.itemChanged.disconnect(self.handle_mirror_item_change)
-        self.mirror_tree.clear()
+        def transform(node):
+            if node.is_file:
+                new_name = node.name
+                if search_replace and search_string:
+                    flags = 0 if case_sensitive else re.IGNORECASE
+                    new_name = re.sub(search_string, replace_string, new_name, flags=flags)
+                if add_text:
+                    name, ext = os.path.splitext(new_name)
+                    pos = len(name) + add_text_position + 1 if add_text_position < 0 else min(add_text_position,
+                                                                                              len(name))
+                    new_name = name[:pos] + add_text_value + name[pos:] + ext
 
-        self.any_green_items = False
-        self.any_red_items = False
+                if new_name != node.name:
+                    node.name = new_name
+                    node.full_path = os.path.join(os.path.dirname(node.full_path), new_name)
+                    node.update_metadata()
 
-        root = self.file_tree.invisibleRootItem()
-        parent_items = {}
+            for child in node.children:
+                transform(child)
 
-        def get_transformed_name(original_name, search_string, replace_string, add_text, add_text_value,
-                                 add_text_position, case_sensitive, search_replace):
-            new_name = original_name
+        transform(data)
 
-            if search_string and search_replace:
-                # Escape special characters in search_string
-                escaped_search_string = re.escape(search_string)
-                flags = 0 if case_sensitive else re.IGNORECASE
-                new_name = re.sub(escaped_search_string, replace_string, new_name, flags=flags)
-            if add_text:
-                name, ext = os.path.splitext(new_name)
-                if add_text_position < 0:
-                    pos = len(name) + add_text_position + 1
-                else:
-                    pos = min(add_text_position, len(name))
-                new_name = name[:pos] + add_text_value + name[pos:] + ext
-            return new_name
+    def update_rename_button_state(self):
+        can_rename = any(node.is_ticked and node.color == "green"
+                         for node in self.get_all_nodes(self.mirror_data) if node.is_file)
+        self.rename_button.setEnabled(can_rename)
 
-        def process_item(item, parent_mirror_path, parent_mirror_item):
-            metadata = item.data(0, Qt.UserRole)
-            is_file = metadata["is_file"]
-            full_path = metadata["full_path"]
-            new_name = item.text(0)
-            item_mirror = QTreeWidgetItem([new_name])
-            item_mirror.setFlags(item_mirror.flags() | Qt.ItemIsUserCheckable)
-            item_mirror.setCheckState(0, item.checkState(0))
+    def get_all_nodes(self, node):
+        yield node
+        for child in node.children:
+            yield from self.get_all_nodes(child)
 
-            if item.checkState(0) == Qt.Unchecked or not is_file:
-                item_mirror.setForeground(0, Qt.black)
-            else:
-                transformed_name = get_transformed_name(new_name, search_string, replace_string, add_text,
-                                                        add_text_value, add_text_position, case_sensitive, search_replace)
-                if transformed_name == new_name:
-                    item_mirror.setForeground(0, Qt.red)
-                else:
-                    transformed_path = os.path.join(os.path.dirname(full_path), transformed_name)
-                    if os.path.exists(transformed_path):
-                        item_mirror.setForeground(0, Qt.red)
-                        self.any_red_items = True
-                    else:
-                        item_mirror.setForeground(0, Qt.green)
-                        self.any_green_items = True
-                        item_mirror.setText(0, transformed_name)
 
-            item_mirror.setData(0, Qt.UserRole, metadata)
-            parent_mirror_item.addChild(item_mirror)
 
-            # Set the expansion state based on the file tree
-            item_mirror.setExpanded(item.isExpanded())
 
-            for k in range(item.childCount()):
-                child_item = item.child(k)
-                child_path = os.path.join(parent_mirror_path, child_item.text(0))
-                process_item(child_item, child_path, item_mirror)
-
-        for i in range(root.childCount()):
-            parent = root.child(i)
-            parent_path = parent.data(0, Qt.UserRole)["full_path"]
-            parent_mirror = self.get_or_create_parent_item(self.mirror_tree, parent_path, parent_items)
-            parent_mirror.setExpanded(parent.isExpanded())
-
-            for j in range(parent.childCount()):
-                item = parent.child(j)
-                item_path = os.path.join(parent_path, item.text(0))
-                process_item(item, item_path, parent_mirror)
-
-        self.mirror_tree.itemChanged.connect(self.handle_mirror_item_change)
-
-        if self.any_green_items:
-            logging.debug(f"green items")
-            self.rename_button.setEnabled(True)
-            if self.any_red_items:
-                logging.debug(f"red items")
-                self.rename_button.setEnabled(False)
-        else:
-            logging.debug(f"no green items")
-            self.rename_button.setEnabled(False)
-
-    def handle_mirror_item_change(self, item, column):
-        try:
-            self.mirror_tree.blockSignals(True)
-            if item.checkState(column) == Qt.Unchecked:
-                item.setForeground(0, Qt.black)
-            else:
-                item.setForeground(0, Qt.green if not os.path.exists(os.path.join(self.path_combo.currentText(), item.parent().text(0), item.text(0))) else Qt.red)
-            self.mirror_tree.blockSignals(False)
-            self.update_mirror_tree()
-        except Exception as e:
-            logging.error(f"Error in handle_mirror_item_change: {e}")
 
     def rename_files(self):
         stop_on_error = self.stop_on_error_checkbox.isChecked()
@@ -615,36 +560,10 @@ class Krenamer(QWidget):
 
         renamed_files = []
 
-        def get_all_items(tree_widget):
-            all_items = []
-            root = tree_widget.invisibleRootItem()
-            stack = [root]
-            while stack:
-                parent = stack.pop()
-                for i in range(parent.childCount()):
-                    item = parent.child(i)
-                    all_items.append(item)
-                    if item.childCount() > 0:
-                        stack.append(item)
-            return all_items
-
-        all_items = get_all_items(self.mirror_tree)
-
-        for item in all_items:
-            if item.checkState(0) == Qt.Checked:
-                item_data = item.data(0, Qt.UserRole)
-                is_file = item_data["is_file"]
-                if not is_file:
-                    logging.debug(f"Skipping non-file item: {item.text(0)}")
-                    continue
-
-                # Check if the item's text color is green
-                if item.foreground(0).color() != Qt.green:
-                    continue
-
-                old_path = item_data["full_path"]
-                new_name = item.text(0)
-                new_path = os.path.join(os.path.dirname(old_path), new_name)
+        for node in self.get_all_nodes(self.mirror_data):
+            if node.is_ticked and node.is_file and node.color == "green":
+                old_path = node.full_path
+                new_path = os.path.join(os.path.dirname(old_path), node.name)
                 try:
                     os.rename(old_path, new_path)
                     renamed_files.append(f"{old_path} -> {new_path}")
@@ -666,8 +585,8 @@ class Krenamer(QWidget):
 
             self.show_rename_log(log_message)
         else:
-            self.show_rename_log("no files renamed")
-        self.update_file_tree()
+            self.show_rename_log("No files renamed")
+        self.update_file_data()
 
     def show_rename_log(self, log_message):
         dialog = QDialog(self)
@@ -710,8 +629,8 @@ class Krenamer(QWidget):
             open_with_vlc_action = menu.addAction("Open with VLC")
 
             action = menu.exec_(self.file_tree.viewport().mapToGlobal(position))
-            item_data = item.data(0, Qt.UserRole)
-            path = item_data["full_path"]
+            file_data = item.data(0, Qt.UserRole)
+            path = file_data.full_path
 
             if action == open_in_explorer_action:
                 if os.path.isdir(path):
@@ -725,26 +644,65 @@ class Krenamer(QWidget):
                 else:
                     QMessageBox.warning(self, "Warning", "This file type is not supported by VLC.")
 
-    def handle_item_change(self, item):
-        try:
-            modifiers = QApplication.keyboardModifiers()
-            if modifiers == Qt.ControlModifier or modifiers == Qt.ShiftModifier:
-                return  # Allow normal multi-select behavior with Shift and Control keys
+    def handle_tree_item_change(self, item, column):
+        file_data = item.data(0, Qt.UserRole)
+        if file_data is not None:
+            file_data.is_ticked = item.checkState(0) == Qt.Checked
+            self.update_checkstate(file_data, item)
 
-            selected_items = self.file_tree.selectedItems()
-            for selected_item in selected_items:
-                selected_item.setCheckState(0, item.checkState(0))
-            
-            self.update_checkstate(item)
-            self.update_mirror_tree()
-        except Exception as e:            
-            logging.error(f"Error in handle_item_change: {e}\n")
+            # Determine which tree is the 'other' tree
+            source_tree = item.treeWidget()
+            other_tree = self.mirror_tree if source_tree == self.file_tree else self.file_tree
 
-    def update_checkstate(self, item):
+            self.sync_checkstate(item, other_tree)
+            self.update_rename_button_state()
+        else:
+            tree_name = "file" if item.treeWidget() == self.file_tree else "mirror"
+            logging.error(f"No FileData associated with {tree_name} tree item: {item.text(0)}")
+
+    def update_checkstate(self, file_data, item):
         for i in range(item.childCount()):
-            child = item.child(i)
-            child.setCheckState(0, item.checkState(0))
-            self.update_checkstate(child)
+            child_item = item.child(i)
+            child_data = child_item.data(0, Qt.UserRole)
+            child_data.is_ticked = file_data.is_ticked
+            child_item.setCheckState(0, item.checkState(0))
+            self.update_checkstate(child_data, child_item)
+
+    def sync_item_expansion(self, item, other_tree, expanded):
+        path = []
+        while item:
+            path.append(item.text(0))
+            item = item.parent()
+        path.reverse()
+
+        other_item = other_tree.invisibleRootItem()
+        for name in path:
+            for i in range(other_item.childCount()):
+                if other_item.child(i).text(0) == name:
+                    other_item = other_item.child(i)
+                    break
+        other_item.setExpanded(expanded)
+
+    def sync_checkstate(self, changed_item, other_tree):
+        path = []
+        item = changed_item
+        while item:
+            path.append(item.text(0))
+            item = item.parent()
+        path.reverse()
+
+        other_item = other_tree.invisibleRootItem()
+        for name in path:
+            for i in range(other_item.childCount()):
+                if other_item.child(i).text(0) == name:
+                    other_item = other_item.child(i)
+                    break
+
+        other_item.setCheckState(0, changed_item.checkState(0))
+        file_data = other_item.data(0, Qt.UserRole)
+        if file_data is not None:
+            file_data.is_ticked = changed_item.checkState(0) == Qt.Checked
+            self.update_checkstate(file_data, other_item)
 
     def browse_logfile_location(self):
         directory = QFileDialog.getExistingDirectory(self, 'Select Logfile Directory', self.settings["logfile_location"])
@@ -753,7 +711,7 @@ class Krenamer(QWidget):
             self.logfile_location_edit.setText(directory)
 
     def closeEvent(self, event):
-
+        # Update settings
         self.settings["stop_on_error"] = self.stop_on_error_checkbox.isChecked()
         self.settings["include_logfile"] = self.include_logfile_checkbox.isChecked()
         self.settings["logfile_location"] = self.logfile_location_edit.text()
@@ -763,7 +721,6 @@ class Krenamer(QWidget):
         self.settings["case_sensitive_checked"] = self.case_sensitive_checkbox.isChecked()
         self.settings["include_subfolders_checked"] = self.include_subfolders_checkbox.isChecked()
         self.settings["match_case_sensitive_checked"] = self.match_case_sensitive_checkbox.isChecked()
-
         self.settings["add_text_checked"] = self.add_text_checkbox.isChecked()
         self.settings["logging_level"] = self.logging_level_combo.currentText()
         self.save_settings()

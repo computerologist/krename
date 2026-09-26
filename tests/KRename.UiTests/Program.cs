@@ -1,0 +1,258 @@
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
+using KRename.App;
+using KRename.Core;
+
+namespace KRename.UiTests;
+
+internal static class Program
+{
+    private static readonly List<string> Failures = [];
+
+    [STAThread]
+    private static int Main()
+    {
+        var application = new KRename.App.App();
+        application.InitializeComponent();
+
+        Run("Startup loads the remembered folder into both panes", StartupLoadsRememberedFolder);
+        Run("Recent-folder selection survives refresh and moves to the top", RecentFolderSelectionSurvivesRefresh);
+        Run("Saved recurse state loads nested files", SavedRecurseLoadsNestedFiles);
+        Run("Empty top-level scans explain how to enable recursion", EmptyTopLevelExplainsRecursion);
+        Run("Editable rename fields retain dropdown history", EditableFieldsRetainHistory);
+        Run("A literal-space filename rule appears in the preview", LiteralSpaceRuleAppearsInPreview);
+        Run("Gray no-change rows do not disable applicable changes", GrayRowsDoNotDisableChanges);
+        Run("Enter in folder and wildcard fields refreshes the file list", EnterRefreshesFileList);
+
+        if (Failures.Count > 0)
+        {
+            Console.Error.WriteLine($"{Failures.Count} UI test(s) failed:");
+            Failures.ForEach(x => Console.Error.WriteLine($"- {x}"));
+            return 1;
+        }
+
+        Console.WriteLine("All KRename WPF integration tests passed.");
+        return 0;
+    }
+
+    private static void Run(string name, Action test)
+    {
+        try
+        {
+            test();
+            Console.WriteLine($"PASS  {name}");
+        }
+        catch (Exception ex)
+        {
+            Failures.Add($"{name}: {ex.Message}");
+        }
+    }
+
+    private static void StartupLoadsRememberedFolder()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "one.txt"), "1");
+            File.WriteAllText(Path.Combine(first, "two.txt"), "2");
+            var settings = Settings(first, first, second);
+            var window = new MainWindow(settings, persistSettings: false);
+
+            RaiseLoaded(window);
+
+            Equal(first, Control<ComboBox>(window, "FolderComboBox").Text);
+            Equal(2, Plan(window, "SourceGrid").Count);
+            Equal(2, Plan(window, "PreviewGrid").Count);
+        });
+    }
+
+    private static void RecentFolderSelectionSurvivesRefresh()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "first.txt"), "1");
+            File.WriteAllText(Path.Combine(second, "second.txt"), "2");
+            var settings = Settings(first, first, second);
+            var window = new MainWindow(settings, persistSettings: false);
+            var folder = Control<ComboBox>(window, "FolderComboBox");
+            var refresh = Control<Button>(window, "LoadRefreshButton");
+
+            folder.SelectedItem = second;
+            refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Equal(second, folder.Text);
+            Equal("second.txt", Plan(window, "SourceGrid").Single().CurrentName);
+            Equal(second, settings.LastFolder);
+            Equal(second, settings.RecentFolders[0]);
+        });
+    }
+
+    private static void SavedRecurseLoadsNestedFiles()
+    {
+        WithTempFolders((first, second) =>
+        {
+            var nested = Path.Combine(first, "nested");
+            Directory.CreateDirectory(nested);
+            File.WriteAllText(Path.Combine(nested, "child.txt"), "child");
+            var settings = Settings(first, first).withRecurse(true);
+            var window = new MainWindow(settings, persistSettings: false);
+
+            RaiseLoaded(window);
+
+            var item = Plan(window, "SourceGrid").Single();
+            Equal("child.txt", item.CurrentName);
+            Equal("nested", item.RelativeDirectory);
+        });
+    }
+
+    private static void EmptyTopLevelExplainsRecursion()
+    {
+        WithTempFolders((first, second) =>
+        {
+            var nested = Path.Combine(first, "nested");
+            Directory.CreateDirectory(nested);
+            File.WriteAllText(Path.Combine(nested, "child.txt"), "child");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+
+            RaiseLoaded(window);
+
+            Equal(0, Plan(window, "SourceGrid").Count);
+            var status = Control<TextBlock>(window, "StatusTextBlock").Text;
+            True(status.Contains("enable Recurse", StringComparison.OrdinalIgnoreCase), status);
+        });
+    }
+
+    private static void EditableFieldsRetainHistory()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "one.txt"), "1");
+            var settings = Settings(first, first);
+            var window = new MainWindow(settings, persistSettings: false);
+            var mask = Control<ComboBox>(window, "MaskTextBox");
+            mask.Text = "*.txt";
+
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Equal("*.txt", settings.FieldHistory["FileMask"][0]);
+            True(mask.Items.Cast<string>().Contains("*.txt"), "The wildcard history dropdown should contain the used value.");
+        });
+    }
+
+    private static void LiteralSpaceRuleAppearsInPreview()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "some file.txt"), "1");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+            Control<ComboBox>(window, "NameFindTextBox").Text = " ";
+            Control<ComboBox>(window, "NameReplaceTextBox").Text = "_";
+            Control<Button>(window, "AddNameRuleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Equal("some_file.txt", Plan(window, "PreviewGrid").Single().NewName);
+        });
+    }
+
+    private static void GrayRowsDoNotDisableChanges()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "already.txt"), "1");
+            File.WriteAllText(Path.Combine(first, "NeedsCase.txt"), "2");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+            Control<RadioButton>(window, "CaseLowerRadio").IsChecked = true;
+
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            var plan = Plan(window, "PreviewGrid");
+            Equal(1, plan.Count(x => x.Status == RenameStatus.Ready));
+            Equal(1, plan.Count(x => x.Status == RenameStatus.Unchanged));
+            True(Control<Button>(window, "ApplyButton").IsEnabled, "Gray no-change rows should not disable Apply.");
+        });
+    }
+
+    private static void EnterRefreshesFileList()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "one.txt"), "1");
+            File.WriteAllText(Path.Combine(second, "two.txt"), "2");
+            File.WriteAllText(Path.Combine(second, "skip.jpg"), "3");
+            var window = new MainWindow(Settings(first, first, second), persistSettings: false);
+            var folder = Control<ComboBox>(window, "FolderComboBox");
+            var mask = Control<ComboBox>(window, "MaskTextBox");
+
+            folder.Text = second;
+            PressEnter(folder);
+            Equal(2, Plan(window, "SourceGrid").Count);
+
+            mask.Text = "*.txt";
+            PressEnter(mask);
+            Equal("two.txt", Plan(window, "SourceGrid").Single().CurrentName);
+        });
+    }
+
+    private static AppSettings Settings(string lastFolder, params string[] recent) => new()
+    {
+        LastFolder = lastFolder,
+        RecentFolders = [.. recent],
+        RememberLastFolder = true,
+        ConfirmBeforeRename = true,
+        RecurseByDefault = false
+    };
+
+    private static AppSettings withRecurse(this AppSettings settings, bool value)
+    {
+        settings.RecurseByDefault = value;
+        return settings;
+    }
+
+    private static void RaiseLoaded(MainWindow window) =>
+        window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+
+    private static void PressEnter(Control control)
+    {
+        using var source = new HwndSource(new HwndSourceParameters("KRename UI test input")
+        {
+            Width = 1,
+            Height = 1,
+            WindowStyle = unchecked((int)0x80000000)
+        });
+        control.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, Environment.TickCount, Key.Enter)
+        {
+            RoutedEvent = Keyboard.KeyDownEvent
+        });
+    }
+
+    private static T Control<T>(MainWindow window, string name) where T : class =>
+        window.FindName(name) as T ?? throw new Exception($"Control '{name}' was not found.");
+
+    private static IReadOnlyList<RenamePlanItem> Plan(MainWindow window, string gridName) =>
+        Control<DataGrid>(window, gridName).ItemsSource as IReadOnlyList<RenamePlanItem>
+        ?? throw new Exception($"Grid '{gridName}' does not contain a rename plan.");
+
+    private static void WithTempFolders(Action<string, string> action)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"krename-ui-tests-{Guid.NewGuid():N}");
+        var first = Path.Combine(root, "first");
+        var second = Path.Combine(root, "second");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        try { action(first, second); }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private static void Equal<T>(T expected, T actual)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+            throw new Exception($"Expected '{expected}', got '{actual}'.");
+    }
+
+    private static void True(bool condition, string message)
+    {
+        if (!condition) throw new Exception(message);
+    }
+}

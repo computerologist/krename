@@ -67,6 +67,8 @@ public static class ThemeService
         Application.Current.Resources[SystemColors.MenuTextBrushKey] = Brush(palette["TextPrimaryBrush"]);
         Application.Current.Resources[SystemColors.HighlightBrushKey] = Brush(palette["AccentBrush"]);
         Application.Current.Resources[SystemColors.HighlightTextBrushKey] = Brushes.White;
+        Application.Current.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = Brush(palette["AccentBrush"]);
+        Application.Current.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = Brushes.White;
     }
 
     private static SolidColorBrush Brush(string color) =>

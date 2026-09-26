@@ -26,10 +26,12 @@ public partial class MainWindow : Window
     private readonly bool _isSmokeTest = Environment.GetCommandLineArgs().Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
     private readonly bool _persistSettings;
     private readonly bool _showDialogs;
+    private IReadOnlyList<RenamePlanItem> _sourcePlan = [];
     private IReadOnlyList<RenamePlanItem> _currentPlan = [];
     private AppSettings _settings;
     private string _manualOutputFolder = "";
     private RenamePlanItem? _contextSourceItem;
+    private RenamePlanItem? _contextTargetItem;
 
     public ObservableCollection<FolderTreeNode> FolderRoots => _folderRoots;
 
@@ -169,6 +171,13 @@ public partial class MainWindow : Window
         RefreshPreviewIfFolderValid();
     }
 
+    private void NameRuleField_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Return) || string.IsNullOrEmpty(NameFindTextBox.Text)) return;
+        AddNameRule_Click(sender, e);
+        e.Handled = true;
+    }
+
     private void RemoveNameRule_Click(object sender, RoutedEventArgs e)
     {
         if (NameRulesList.SelectedItem is not TextReplacementRule rule) return;
@@ -223,6 +232,13 @@ public partial class MainWindow : Window
         ExtensionFindTextBox.Text = "";
         ExtensionReplaceTextBox.Text = "";
         RefreshPreviewIfFolderValid();
+    }
+
+    private void ExtensionRuleField_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Return) || string.IsNullOrEmpty(ExtensionFindTextBox.Text)) return;
+        AddExtensionRule_Click(sender, e);
+        e.Handled = true;
     }
 
     private void RemoveExtensionRule_Click(object sender, RoutedEventArgs e)
@@ -364,8 +380,9 @@ public partial class MainWindow : Window
                 SequenceSeparator = SequenceSeparatorTextBox.Text
             };
 
-            _currentPlan = _engine.BuildPreview(options);
-            SourceGrid.ItemsSource = _currentPlan;
+            _sourcePlan = _engine.BuildPreview(options);
+            _currentPlan = _sourcePlan;
+            SourceGrid.ItemsSource = _sourcePlan;
             PreviewGrid.ItemsSource = _currentPlan;
             var ready = _currentPlan.Count(x => x.Status == RenameStatus.Ready);
             var errors = _currentPlan.Count(x => x.Status == RenameStatus.Error);
@@ -455,6 +472,7 @@ public partial class MainWindow : Window
 
     private void ClearPreview()
     {
+        _sourcePlan = [];
         _currentPlan = [];
         SourceGrid.ItemsSource = null;
         PreviewGrid.ItemsSource = null;
@@ -787,6 +805,27 @@ public partial class MainWindow : Window
         var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
         _contextSourceItem = row?.Item as RenamePlanItem;
         if (_contextSourceItem is not null) SourceGrid.SelectedItem = _contextSourceItem;
+    }
+
+    private void PreviewGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
+        _contextTargetItem = row?.Item as RenamePlanItem;
+        if (_contextTargetItem is not null) PreviewGrid.SelectedItem = _contextTargetItem;
+    }
+
+    private void SkipTargetFile_Click(object sender, RoutedEventArgs e)
+    {
+        var item = _contextTargetItem ?? PreviewGrid.SelectedItem as RenamePlanItem;
+        _contextTargetItem = null;
+        if (item is null) return;
+        _currentPlan = _currentPlan.Where(x =>
+            !string.Equals(x.SourcePath, item.SourcePath, StringComparison.OrdinalIgnoreCase)).ToList();
+        PreviewGrid.ItemsSource = _currentPlan;
+        var ready = _currentPlan.Count(x => x.Status == RenameStatus.Ready);
+        var errors = _currentPlan.Count(x => x.Status == RenameStatus.Error);
+        SetApplyEnabled(ready > 0 && errors == 0);
+        StatusTextBlock.Text = $"Skipped '{item.CurrentName}' for this preview. {_currentPlan.Count} target row{(_currentPlan.Count == 1 ? " remains" : "s remain")}.";
     }
 
     private void OpenSelectedFileInExplorer_Click(object sender, RoutedEventArgs e)

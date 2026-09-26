@@ -20,6 +20,8 @@ KRename is a preview-first bulk file renamer for Windows, built with C# and WPF.
 - Multiple filename and extension replacement filters, executed from top to bottom
 - Per-filter regex, reload, reorder, and trash controls, plus one-click clearing of each filter list
 - Filter changes rebuild the preview immediately, with regex validation before a filter is added
+- Enter adds a non-empty filename or extension replacement filter
+- Target Preview rows can be skipped for the current preview without changing filters or saved settings
 - Lowercase/uppercase conversion and removal of letters, numbers, spaces, or symbols
 - Per-rule case-sensitive matching for filenames, extensions, and split delimiters
 - Filename splitting with selectable fields, plus left/right remove-or-keep trimming

@@ -185,14 +185,14 @@ void BracketWildcardRegexTest()
             [
                 new TextReplacementRule
                 {
-                    Find = @"^google[.]com\s+-\s+\[[^]]+\].*$",
+                    Find = @"^google[.]com\s+-\s+\[[^]]+\]",
                     ReplaceWith = "matched",
                     MatchCase = true,
                     UseRegex = true
                 }
             ]
         });
-        Equal("matched.mp4", plan.Single().NewName);
+        Equal("matched trailing title_edited.mp4", plan.Single().NewName);
         Equal(RenameStatus.Ready, plan.Single().Status);
     });
 }

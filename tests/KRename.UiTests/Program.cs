@@ -29,9 +29,11 @@ internal static class Program
         Run("Editable rename fields retain dropdown history", EditableFieldsRetainHistory);
         Run("Selecting a file-mask history item refreshes both panes", MaskHistorySelectionRefreshes);
         Run("A literal-space filename rule appears in the preview", LiteralSpaceRuleAppearsInPreview);
-        Run("A per-filter regex matches variable bracket contents", PerFilterRegexMatchesBracketContents);
+        Run("A per-filter regex replaces only the matched filename prefix", PerFilterRegexMatchesBracketContents);
+        Run("Enter creates non-empty filename and extension filters", EnterCreatesReplacementFilters);
         Run("Replacement filters can be loaded and reordered", ReplacementFiltersLoadAndReorder);
         Run("Gray no-change rows do not disable applicable changes", GrayRowsDoNotDisableChanges);
+        Run("A target row can be skipped for the current preview", TargetRowsCanBeSkipped);
         Run("Enter in folder and wildcard fields refreshes the file list", EnterRefreshesFileList);
         Run("Output folder preview preserves path and remembers history", OutputFolderPreviewAndHistory);
         Run("Applying a rename refreshes the current lists", ApplyRenameRefreshesLists);
@@ -214,12 +216,36 @@ internal static class Program
         {
             File.WriteAllText(Path.Combine(first, "google.com - [sample123] trailing title_edited.mp4"), "1");
             var window = new MainWindow(Settings(first, first), persistSettings: false);
-            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com\s+-\s+\[[^]]+\].*$";
+            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com\s+-\s+\[[^]]+\]";
             Control<ComboBox>(window, "NameReplaceTextBox").Text = "matched";
             Control<CheckBox>(window, "NameRuleRegexCheckBox").IsChecked = true;
             Control<Button>(window, "AddNameRuleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-            Equal("matched.mp4", Plan(window, "PreviewGrid").Single().NewName);
+            Equal("matched trailing title_edited.mp4", Plan(window, "PreviewGrid").Single().NewName);
+        });
+    }
+
+    private static void EnterCreatesReplacementFilters()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "sample.txt"), "1");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+            var nameFind = Control<ComboBox>(window, "NameFindTextBox");
+            PressEnter(nameFind);
+            Equal(0, Control<ListBox>(window, "NameRulesList").Items.Count);
+
+            nameFind.Text = "sample";
+            Control<ComboBox>(window, "NameReplaceTextBox").Text = "renamed";
+            PressEnter(Control<ComboBox>(window, "NameReplaceTextBox"));
+            Equal(1, Control<ListBox>(window, "NameRulesList").Items.Count);
+            Equal("renamed.txt", Plan(window, "PreviewGrid").Single().NewName);
+
+            Control<ComboBox>(window, "ExtensionFindTextBox").Text = "txt";
+            Control<ComboBox>(window, "ExtensionReplaceTextBox").Text = "md";
+            PressEnter(Control<ComboBox>(window, "ExtensionReplaceTextBox"));
+            Equal(1, Control<ListBox>(window, "ExtensionRulesList").Items.Count);
+            Equal("renamed.md", Plan(window, "PreviewGrid").Single().NewName);
         });
     }
 
@@ -268,6 +294,34 @@ internal static class Program
             Equal(1, plan.Count(x => x.Status == RenameStatus.Ready));
             Equal(1, plan.Count(x => x.Status == RenameStatus.Unchanged));
             True(Control<Button>(window, "ApplyButton").IsEnabled, "Gray no-change rows should not disable Apply.");
+        });
+    }
+
+    private static void TargetRowsCanBeSkipped()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "keep.txt"), "1");
+            File.WriteAllText(Path.Combine(first, "skip.txt"), "2");
+            var settings = Settings(first, first);
+            settings.ConfirmBeforeRename = false;
+            var journal = Path.Combine(Path.GetDirectoryName(first)!, "skip-journal.json");
+            var window = new MainWindow(settings, persistSettings: false, showDialogs: false, engine: new RenameEngine(journal));
+            Control<ComboBox>(window, "PrefixTextBox").Text = "x-";
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var sourceGrid = Control<DataGrid>(window, "SourceGrid");
+            var previewGrid = Control<DataGrid>(window, "PreviewGrid");
+            var skipped = Plan(window, "PreviewGrid").Single(x => x.CurrentName == "skip.txt");
+            previewGrid.SelectedItem = skipped;
+
+            Invoke(window, "SkipTargetFile_Click", new MenuItem(), new RoutedEventArgs());
+
+            Equal(2, (sourceGrid.ItemsSource as IReadOnlyList<RenamePlanItem>)?.Count ?? -1);
+            Equal(1, Plan(window, "PreviewGrid").Count);
+            Equal("keep.txt", Plan(window, "PreviewGrid").Single().CurrentName);
+            Control<Button>(window, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            True(File.Exists(Path.Combine(first, "x-keep.txt")), "The remaining target should be renamed.");
+            True(File.Exists(Path.Combine(first, "skip.txt")), "The skipped source should be left unchanged.");
         });
     }
 

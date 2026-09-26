@@ -110,8 +110,15 @@
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                 <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                        <Setter Property="Foreground" Value="White" />
+                                    </Trigger>
+                                </Style.Triggers>
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
@@ -171,7 +178,12 @@
                     </Border>
                     <DataGrid x:Name="PreviewGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" BorderThickness="0"
                               GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
-                              ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}">
+                              ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}" PreviewMouseRightButtonDown="PreviewGrid_PreviewMouseRightButtonDown">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Skip" Click="SkipTargetFile_Click" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                                 <Setter Property="ToolTip" Value="{Binding Message}" />
@@ -232,13 +244,13 @@
                                 <Grid Grid.Row="0">
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <ComboBox x:Name="NameFindTextBox" IsEditable="True" IsTextSearchEnabled="False" ToolTip="Find (spaces are matched literally)" />
-                                    <ComboBox x:Name="NameReplaceTextBox" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False" Margin="6,0" ToolTip="Replace with" />
+                                    <ComboBox x:Name="NameFindTextBox" IsEditable="True" IsTextSearchEnabled="False" ToolTip="Find (spaces are matched literally)" KeyDown="NameRuleField_KeyDown" />
+                                    <ComboBox x:Name="NameReplaceTextBox" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False" Margin="6,0" ToolTip="Replace with" KeyDown="NameRuleField_KeyDown" />
                                     <Button x:Name="AddNameRuleButton" Grid.Column="2" Content="Add" Style="{StaticResource SecondaryButton}" Click="AddNameRule_Click" />
                                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,7,0,0">
                                         <CheckBox x:Name="NameRuleCaseSensitiveCheckBox" Content="Case-sensitive match" />
                                         <CheckBox x:Name="NameRuleRegexCheckBox" Content="Regular expression" Margin="14,0,0,0"
-                                                  ToolTip="The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\].*$" />
+                                                  ToolTip="The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\]" />
                                     </WrapPanel>
                                 </Grid>
                                 <ListBox x:Name="NameRulesList" Grid.Row="1" Margin="0,8">
@@ -322,8 +334,8 @@
                                 <Grid>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <ComboBox x:Name="ExtensionFindTextBox" IsEditable="True" IsTextSearchEnabled="False" ToolTip="Extension without the dot" />
-                                    <ComboBox x:Name="ExtensionReplaceTextBox" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False" Margin="6,0" ToolTip="New extension" />
+                                    <ComboBox x:Name="ExtensionFindTextBox" IsEditable="True" IsTextSearchEnabled="False" ToolTip="Extension without the dot" KeyDown="ExtensionRuleField_KeyDown" />
+                                    <ComboBox x:Name="ExtensionReplaceTextBox" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="False" Margin="6,0" ToolTip="New extension" KeyDown="ExtensionRuleField_KeyDown" />
                                     <Button Grid.Column="2" Content="Add" Style="{StaticResource SecondaryButton}" Click="AddExtensionRule_Click" />
                                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,7,0,0">
                                         <CheckBox x:Name="ExtensionRuleCaseSensitiveCheckBox" Content="Case-sensitive extension match" />

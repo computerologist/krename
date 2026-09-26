@@ -41,6 +41,7 @@ internal static class Program
         Run("Folder tree nodes load child directories lazily", FolderTreeLoadsChildren);
         Run("Folder tree expands and selects the active source path", FolderTreeTracksActiveSource);
         Run("Dark mode and the options splitter are enabled by default", DarkModeAndSplitterDefaults);
+        Run("Application title bars follow dark and light themes", ApplicationTitleBarsFollowTheme);
         Run("Generated context menus follow the active theme", ContextMenusFollowActiveTheme);
         Run("Ready and error preview rows alternate in both themes", PreviewStatusRowsAlternateInBothThemes);
 
@@ -501,6 +502,60 @@ internal static class Program
         {
             ThemeService.Apply(true);
         }
+    }
+
+    private static void ApplicationTitleBarsFollowTheme()
+    {
+        WithTempFolders((first, second) =>
+        {
+            foreach (var darkMode in new[] { true, false })
+            {
+                var settings = Settings(first, first);
+                settings.UseDarkMode = darkMode;
+                var window = new MainWindow(settings, persistSettings: false);
+                window.Show();
+                try
+                {
+                    DrainDispatcher(window.Dispatcher);
+                    Equal(WindowStyle.None, window.WindowStyle);
+                    var titleBar = FindVisualChild<ThemedTitleBar>(window)
+                                   ?? throw new Exception("The themed title bar was not rendered.");
+                    var titleBarBorder = titleBar.FindName("TitleBarBackground") as Border
+                                         ?? throw new Exception("The title-bar background was not rendered.");
+                    SameBrush(Application.Current.Resources["MenuBrush"], titleBarBorder.Background);
+
+                    var maximize = titleBar.FindName("MaximizeButton") as Button
+                                   ?? throw new Exception("The maximize button was not created.");
+                    maximize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Equal(WindowState.Maximized, window.WindowState);
+                    maximize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Equal(WindowState.Normal, window.WindowState);
+
+                    var settingsWindow = new SettingsWindow(settings) { Owner = window };
+                    settingsWindow.Show();
+                    try
+                    {
+                        DrainDispatcher(settingsWindow.Dispatcher);
+                        Equal(WindowStyle.None, settingsWindow.WindowStyle);
+                        var settingsTitleBar = FindVisualChild<ThemedTitleBar>(settingsWindow)
+                                               ?? throw new Exception("The settings title bar was not rendered.");
+                        var settingsBackground = settingsTitleBar.FindName("TitleBarBackground") as Border
+                                                 ?? throw new Exception("The settings title-bar background was not rendered.");
+                        SameBrush(Application.Current.Resources["MenuBrush"], settingsBackground.Background);
+                        Equal(Visibility.Collapsed, settingsTitleBar.MinimizeButtonVisibility);
+                        Equal(Visibility.Collapsed, settingsTitleBar.MaximizeButtonVisibility);
+                    }
+                    finally
+                    {
+                        settingsWindow.Close();
+                    }
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+        });
     }
 
     private static void PreviewStatusRowsAlternateInBothThemes()

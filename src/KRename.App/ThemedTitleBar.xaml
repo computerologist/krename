@@ -1,0 +1,51 @@
+<UserControl x:Class="KRename.App.ThemedTitleBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+             x:Name="Root" Height="32" Focusable="False">
+    <UserControl.Resources>
+        <Style x:Key="TitleBarButton" TargetType="Button">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBackground" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBackground" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBackground" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Border x:Name="TitleBarBackground" Background="{DynamicResource MenuBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
+                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="MinimizeButton" Content="&#xE921;" Style="{StaticResource TitleBarButton}"
+                        Visibility="{Binding MinimizeButtonVisibility, ElementName=Root}" ToolTip="Minimize" Click="MinimizeButton_Click" />
+                <Button x:Name="MaximizeButton" Content="&#xE922;" Style="{StaticResource TitleBarButton}"
+                        Visibility="{Binding MaximizeButtonVisibility, ElementName=Root}" ToolTip="Maximize" Click="MaximizeButton_Click" />
+                <Button Content="&#xE8BB;" Style="{StaticResource TitleBarButton}" ToolTip="Close" Click="CloseButton_Click" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

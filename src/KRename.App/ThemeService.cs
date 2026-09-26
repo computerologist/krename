@@ -7,6 +7,12 @@ namespace KRename.App;
 
 public static class ThemeService
 {
+    private const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
+    private const int DwmwaUseImmersiveDarkMode = 20;
+    private const int DwmwaBorderColor = 34;
+    private const int DwmwaCaptionColor = 35;
+    private const int DwmwaTextColor = 36;
+
     private static readonly IReadOnlyDictionary<string, string> Dark = new Dictionary<string, string>
     {
         ["AccentBrush"] = "#8B7CF6",
@@ -106,8 +112,20 @@ public static class ThemeService
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero) return;
         var enabled = darkMode ? 1 : 0;
-        if (DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int)) != 0)
-            _ = DwmSetWindowAttribute(handle, 19, ref enabled, sizeof(int));
+        if (DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref enabled, sizeof(int)) != 0)
+            _ = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkModeBefore20H1, ref enabled, sizeof(int));
+
+        var palette = darkMode ? Dark : Light;
+        SetTitleBarColor(handle, DwmwaCaptionColor, palette["WindowBackgroundBrush"]);
+        SetTitleBarColor(handle, DwmwaTextColor, palette["TextPrimaryBrush"]);
+        SetTitleBarColor(handle, DwmwaBorderColor, palette["BorderBrush"]);
+    }
+
+    private static void SetTitleBarColor(IntPtr handle, int attribute, string colorValue)
+    {
+        var color = (Color)ColorConverter.ConvertFromString(colorValue);
+        var colorRef = color.R | color.G << 8 | color.B << 16;
+        _ = DwmSetWindowAttribute(handle, attribute, ref colorRef, sizeof(int));
     }
 
     [DllImport("dwmapi.dll")]

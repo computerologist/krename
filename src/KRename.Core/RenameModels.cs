@@ -17,6 +17,7 @@ public sealed class TextReplacementRule
 public sealed class RenameOptions
 {
     public required string Folder { get; init; }
+    public string? OutputFolder { get; init; }
     public string FileMask { get; init; } = "*.*";
     public bool IncludeSubdirectories { get; init; }
     public bool ReplaceEntireName { get; init; }

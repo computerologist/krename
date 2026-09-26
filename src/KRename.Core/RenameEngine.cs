@@ -46,6 +46,12 @@ public sealed class RenameEngine
         foreach (var source in files)
         {
             var directory = Path.GetDirectoryName(source)!;
+            var relativeDirectory = Path.GetRelativePath(options.Folder, directory);
+            var targetDirectory = string.IsNullOrWhiteSpace(options.OutputFolder)
+                ? directory
+                : relativeDirectory == "."
+                    ? Path.GetFullPath(options.OutputFolder)
+                    : Path.Combine(Path.GetFullPath(options.OutputFolder), relativeDirectory);
             var fileName = Path.GetFileName(source);
             var name = Path.GetFileNameWithoutExtension(fileName);
             var extension = Path.GetExtension(fileName).TrimStart('.');
@@ -64,14 +70,14 @@ public sealed class RenameEngine
             sequence++;
 
             var newName = string.IsNullOrEmpty(extension) ? name : $"{name}.{extension}";
-            var target = Path.Combine(directory, newName);
+            var target = Path.Combine(targetDirectory, newName);
             var changed = !string.Equals(source, target, StringComparison.Ordinal);
             var metadata = ReadMetadata(source);
             var item = new RenamePlanItem
             {
                 SourcePath = source,
                 TargetPath = target,
-                RelativeDirectory = Path.GetRelativePath(options.Folder, directory),
+                RelativeDirectory = relativeDirectory,
                 FileSize = metadata.Size,
                 CreatedAt = metadata.CreatedAt,
                 ModifiedAt = metadata.ModifiedAt,
@@ -157,6 +163,8 @@ public sealed class RenameEngine
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(options.Folder);
         if (!Directory.Exists(options.Folder)) throw new DirectoryNotFoundException($"Folder not found: {options.Folder}");
+        if (!string.IsNullOrWhiteSpace(options.OutputFolder) && !Directory.Exists(options.OutputFolder))
+            throw new DirectoryNotFoundException($"Output folder not found: {options.OutputFolder}");
         if (options.SequenceDigits is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(options.SequenceDigits), "Sequence digits must be between 1 and 12.");
         if (options.SequenceKind == SequenceKind.Letters && options.SequenceStart < 1) throw new ArgumentOutOfRangeException(nameof(options.SequenceStart), "Letter sequences must start at 1 or higher.");
         if (options.SequenceKind == SequenceKind.Numbers && options.SequenceStart < 0) throw new ArgumentOutOfRangeException(nameof(options.SequenceStart), "Number sequences cannot start below zero.");
@@ -348,6 +356,18 @@ public sealed class RenameEngine
 
     private static RenameResult ExecuteTwoPhase(List<MoveOperation> operations)
     {
+        try
+        {
+            foreach (var targetDirectory in operations
+                         .Select(x => Path.GetDirectoryName(x.Target)!)
+                         .Distinct(PathComparer))
+                Directory.CreateDirectory(targetDirectory);
+        }
+        catch (Exception ex)
+        {
+            return new RenameResult(false, 0, $"Rename stopped while preparing output folders: {ex.Message}");
+        }
+
         var staged = new List<MoveOperation>();
         try
         {

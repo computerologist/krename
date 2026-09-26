@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using KRename.Core;
 using Microsoft.Win32;
 
@@ -11,26 +13,43 @@ namespace KRename.App;
 
 public partial class MainWindow : Window
 {
-    private readonly RenameEngine _engine = new();
+    private readonly RenameEngine _engine;
     private readonly ObservableCollection<TextReplacementRule> _nameRules = [];
     private readonly ObservableCollection<TextReplacementRule> _extensionRules = [];
     private readonly ObservableCollection<string> _recentFolders = [];
+    private readonly ObservableCollection<string> _recentOutputFolders = [];
+    private readonly ObservableCollection<FolderTreeNode> _folderRoots = [];
     private readonly Dictionary<ComboBox, string> _historyFields = [];
     private readonly Dictionary<string, ObservableCollection<string>> _fieldHistories = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool _isSmokeTest = Environment.GetCommandLineArgs().Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
     private readonly bool _persistSettings;
+    private readonly bool _showDialogs;
     private IReadOnlyList<RenamePlanItem> _currentPlan = [];
     private AppSettings _settings;
 
-    public MainWindow() : this(SettingsService.Load(), persistSettings: true)
+    public ObservableCollection<FolderTreeNode> FolderRoots => _folderRoots;
+
+    public MainWindow() : this(SettingsService.Load(), persistSettings: true, showDialogs: true, engine: null)
     {
     }
 
-    public MainWindow(AppSettings settings, bool persistSettings)
+    public MainWindow(AppSettings settings, bool persistSettings) : this(settings, persistSettings, showDialogs: true, engine: null)
     {
+    }
+
+    public MainWindow(AppSettings settings, bool persistSettings, bool showDialogs) : this(settings, persistSettings, showDialogs, engine: null)
+    {
+    }
+
+    public MainWindow(AppSettings settings, bool persistSettings, bool showDialogs, RenameEngine? engine)
+    {
+        _engine = engine ?? new RenameEngine();
         _settings = settings;
         _persistSettings = persistSettings;
+        _showDialogs = showDialogs;
+        ThemeService.Apply(_settings.UseDarkMode);
         InitializeComponent();
+        DataContext = this;
         RegisterHistoryFields();
         foreach (var folder in _settings.RecentFolders ?? [])
             if (Directory.Exists(folder) && !_recentFolders.Contains(folder, StringComparer.OrdinalIgnoreCase)) _recentFolders.Add(folder);
@@ -38,11 +57,19 @@ public partial class MainWindow : Window
         FolderComboBox.Text = _settings.RememberLastFolder && Directory.Exists(_settings.LastFolder)
             ? _settings.LastFolder
             : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        foreach (var folder in _settings.RecentOutputFolders ?? [])
+            if (Directory.Exists(folder) && !_recentOutputFolders.Contains(folder, StringComparer.OrdinalIgnoreCase)) _recentOutputFolders.Add(folder);
+        DestinationComboBox.ItemsSource = _recentOutputFolders;
+        DestinationComboBox.Text = _settings.RememberLastFolder && Directory.Exists(_settings.LastOutputFolder)
+            ? _settings.LastOutputFolder
+            : "";
         RecursiveCheckBox.IsChecked = _settings.RecurseByDefault;
+        ViewDarkModeMenuItem.IsChecked = _settings.UseDarkMode;
         CustomDatePicker.SelectedDate = DateTime.Today;
         NameRulesList.ItemsSource = _nameRules;
         ExtensionRulesList.ItemsSource = _extensionRules;
         ApplyColumnVisibility();
+        InitializeFolderTree();
         RefreshUndoState();
         if (_isSmokeTest)
             Loaded += (_, _) => Dispatcher.BeginInvoke(Close);
@@ -68,6 +95,29 @@ public partial class MainWindow : Window
             RememberCurrentFolder();
             BuildPreview();
         }
+    }
+
+    private void BrowseOutputButton_Click(object sender, RoutedEventArgs e)
+    {
+        var outputFolder = GetSelectedOutputFolder();
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose an optional output folder",
+            InitialDirectory = outputFolder is not null && Directory.Exists(outputFolder)
+                ? outputFolder
+                : Directory.Exists(GetSelectedFolder()) ? GetSelectedFolder() : null
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        DestinationComboBox.Text = dialog.FolderName;
+        RememberCurrentFolder();
+        BuildPreview();
+    }
+
+    private void ClearOutputFolder_Click(object sender, RoutedEventArgs e)
+    {
+        DestinationComboBox.Text = "";
+        RememberCurrentFolder();
+        BuildPreview();
     }
 
     private void AddNameRule_Click(object sender, RoutedEventArgs e)
@@ -152,6 +202,7 @@ public partial class MainWindow : Window
             var options = new RenameOptions
             {
                 Folder = selectedFolder,
+                OutputFolder = GetSelectedOutputFolder(),
                 FileMask = MaskTextBox.Text.Trim(),
                 IncludeSubdirectories = RecursiveCheckBox.IsChecked == true,
                 ReplaceEntireName = ReplaceEntireNameCheckBox.IsChecked == true,
@@ -253,12 +304,13 @@ public partial class MainWindow : Window
         if (result.Success)
         {
             var logWarning = TryWriteLog("RENAME", result, loggedPlan);
-            ClearPreview();
-            StatusTextBlock.Text = result.Message + " Refresh the preview to load the renamed files."
-                + (logWarning is null ? "" : $" {logWarning}");
             RefreshUndoState();
-            MessageBox.Show(this, result.Message + (logWarning is null ? "" : $"\n\n{logWarning}"),
-                "Rename complete", MessageBoxButton.OK, logWarning is null ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            BuildPreview();
+            StatusTextBlock.Text = result.Message + " The current source and output preview have been refreshed."
+                + (logWarning is null ? "" : $" {logWarning}");
+            if (_showDialogs)
+                MessageBox.Show(this, result.Message + (logWarning is null ? "" : $"\n\n{logWarning}"),
+                    "Rename complete", MessageBoxButton.OK, logWarning is null ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         else
         {
@@ -275,8 +327,9 @@ public partial class MainWindow : Window
 
         var result = _engine.UndoLast();
         var logWarning = result.Success ? TryWriteLog("UNDO", result, []) : null;
-        ClearPreview();
-        StatusTextBlock.Text = result.Message + (result.Success ? " Refresh the preview to reload the files." : "")
+        if (result.Success) BuildPreview();
+        else ClearPreview();
+        StatusTextBlock.Text = result.Message + (result.Success ? " The lists have been refreshed." : "")
             + (logWarning is null ? "" : $" {logWarning}");
         MessageBox.Show(this, result.Message + (logWarning is null ? "" : $"\n\n{logWarning}"),
             result.Success ? "Undo complete" : "Undo stopped", MessageBoxButton.OK,
@@ -304,16 +357,23 @@ public partial class MainWindow : Window
         var dialog = new SettingsWindow(_settings) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         _settings = dialog.SavedSettings;
+        ThemeService.Apply(_settings.UseDarkMode);
+        ViewDarkModeMenuItem.IsChecked = _settings.UseDarkMode;
         if (_settings.RememberLastFolder)
         {
             _settings.LastFolder = FolderComboBox.Text.Trim();
             AddRecentFolder(_settings.LastFolder);
+            _settings.LastOutputFolder = DestinationComboBox.Text.Trim();
+            AddRecentOutputFolder(_settings.LastOutputFolder);
         }
         else
         {
             _settings.LastFolder = "";
             _settings.RecentFolders.Clear();
             _recentFolders.Clear();
+            _settings.LastOutputFolder = "";
+            _settings.RecentOutputFolders.Clear();
+            _recentOutputFolders.Clear();
         }
         try
         {
@@ -394,6 +454,9 @@ public partial class MainWindow : Window
         }
         _settings.LastFolder = selectedFolder;
         AddRecentFolder(_settings.LastFolder);
+        var outputFolder = GetSelectedOutputFolder();
+        _settings.LastOutputFolder = outputFolder ?? "";
+        if (outputFolder is not null) AddRecentOutputFolder(outputFolder);
         TrySaveSettings();
     }
 
@@ -421,6 +484,156 @@ public partial class MainWindow : Window
         var typedFolder = FolderComboBox.Text.Trim();
         if (!string.IsNullOrEmpty(typedFolder)) return typedFolder;
         return (FolderComboBox.SelectedItem as string)?.Trim() ?? "";
+    }
+
+    private string? GetSelectedOutputFolder()
+    {
+        var typedFolder = DestinationComboBox.Text.Trim();
+        if (!string.IsNullOrEmpty(typedFolder)) return typedFolder;
+        var selected = (DestinationComboBox.SelectedItem as string)?.Trim();
+        return string.IsNullOrEmpty(selected) ? null : selected;
+    }
+
+    private void AddRecentOutputFolder(string folder)
+    {
+        if (!_settings.RememberLastFolder || !Directory.Exists(folder)) return;
+        var existingIndex = -1;
+        for (var index = 0; index < _recentOutputFolders.Count; index++)
+        {
+            if (!string.Equals(_recentOutputFolders[index], folder, StringComparison.OrdinalIgnoreCase)) continue;
+            existingIndex = index;
+            break;
+        }
+        if (existingIndex > 0) _recentOutputFolders.Move(existingIndex, 0);
+        else if (existingIndex < 0) _recentOutputFolders.Insert(0, folder);
+        while (_recentOutputFolders.Count > 12) _recentOutputFolders.RemoveAt(_recentOutputFolders.Count - 1);
+        _settings.RecentOutputFolders = [.. _recentOutputFolders];
+        DestinationComboBox.Text = folder;
+    }
+
+    private void InitializeFolderTree()
+    {
+        _folderRoots.Clear();
+        foreach (var drive in DriveInfo.GetDrives().OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var label = drive.Name;
+            try
+            {
+                if (drive.IsReady && !string.IsNullOrWhiteSpace(drive.VolumeLabel))
+                    label = $"{drive.Name}  {drive.VolumeLabel}";
+            }
+            catch (IOException) { }
+            _folderRoots.Add(new FolderTreeNode(drive.RootDirectory.FullName, label));
+        }
+    }
+
+    private void FolderTreeItem_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is TreeViewItem { DataContext: FolderTreeNode node }) node.LoadChildren();
+    }
+
+    private void FolderTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (item is null) return;
+        item.IsSelected = true;
+        item.Focus();
+    }
+
+    private void UseTreeFolderAsSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (FolderTree.SelectedItem is not FolderTreeNode { IsPlaceholder: false } node) return;
+        FolderComboBox.Text = node.FullPath;
+        RememberCurrentFolder();
+        BuildPreview();
+    }
+
+    private void UseTreeFolderAsOutput_Click(object sender, RoutedEventArgs e)
+    {
+        if (FolderTree.SelectedItem is not FolderTreeNode { IsPlaceholder: false } node) return;
+        DestinationComboBox.Text = node.FullPath;
+        RememberCurrentFolder();
+        BuildPreview();
+    }
+
+    private void SourceGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
+        if (row is not null) SourceGrid.SelectedItem = row.Item;
+    }
+
+    private void OpenSelectedFileInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (SourceGrid.SelectedItem is not RenamePlanItem item || !File.Exists(item.SourcePath)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.SourcePath}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            if (_showDialogs)
+                MessageBox.Show(this, $"Explorer could not be opened: {ex.Message}", "Open in Explorer",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SourceGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        if (cell?.Column != SourceFileNameColumn || cell.DataContext is not RenamePlanItem item) return;
+        SourceGrid.CurrentCell = new DataGridCellInfo(item, SourceFileNameColumn);
+        SourceGrid.BeginEdit();
+        e.Handled = true;
+    }
+
+    private void SourceGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (e.EditAction != DataGridEditAction.Commit || e.Column != SourceFileNameColumn ||
+            e.Row.Item is not RenamePlanItem item || e.EditingElement is not TextBox editor) return;
+        var newName = editor.Text;
+        e.Cancel = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            SourceGrid.CancelEdit();
+            RenameSingleSourceFile(item, newName);
+        });
+    }
+
+    private void RenameSingleSourceFile(RenamePlanItem item, string newName)
+    {
+        if (string.Equals(item.CurrentName, newName, StringComparison.Ordinal)) return;
+        var targetPath = Path.Combine(item.DirectoryPath, newName);
+        var manualPlan = new RenamePlanItem
+        {
+            SourcePath = item.SourcePath,
+            TargetPath = targetPath,
+            RelativeDirectory = item.RelativeDirectory,
+            Status = RenameStatus.Ready,
+            Message = "Manual filename edit"
+        };
+        var result = _engine.Apply([manualPlan]);
+        if (!result.Success)
+        {
+            if (_showDialogs)
+                MessageBox.Show(this, result.Message, "Filename was not changed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            BuildPreview();
+            return;
+        }
+        var logWarning = TryWriteLog("MANUAL RENAME", result, [manualPlan]);
+        RefreshUndoState();
+        BuildPreview();
+        StatusTextBlock.Text = $"Renamed '{item.CurrentName}' to '{newName}'. Lists refreshed."
+            + (logWarning is null ? "" : $" {logWarning}");
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match) return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 
     private void RegisterHistoryFields()
@@ -554,10 +767,18 @@ public partial class MainWindow : Window
 
     private void ExitMenu_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.UseDarkMode = ViewDarkModeMenuItem.IsChecked;
+        ThemeService.Apply(_settings.UseDarkMode);
+        TrySaveSettings();
+        StatusTextBlock.Text = _settings.UseDarkMode ? "Dark mode enabled." : "Light mode enabled.";
+    }
+
     private void AboutMenu_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(this,
-            "KRename\n\nPreview-first batch file renaming for Windows.\nRed rows block the operation, green rows will be renamed, and gray no-change rows are ignored.",
+            "KRename\n\nPreview-first batch file renaming for Windows.\nRed rows block the operation, green rows will be renamed, and gray no-change rows are ignored.\n\nDouble-click a source filename to edit it directly, or right-click it to reveal it in Explorer.",
             "About KRename", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

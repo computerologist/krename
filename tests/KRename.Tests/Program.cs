@@ -5,8 +5,10 @@ Run("Preview composes replacement, prefix, suffix, and numbering", PreviewTest);
 Run("Duplicate destinations are rejected", CollisionTest);
 Run("No-change rows are ignored while real changes apply", NoChangeRowsAreIgnoredTest);
 Run("Literal spaces can be replaced", LiteralSpaceReplacementTest);
+Run("Bracket contents can be matched with a regular-expression wildcard", BracketWildcardRegexTest);
 Run("Replacement rules support per-field case sensitivity", CaseSensitivityTest);
 Run("Recursive preview includes subfolders", RecursiveTest);
+Run("Output folders preserve recursive paths and support undo", OutputFolderTest);
 Run("Advanced transforms compose in a predictable order", AdvancedTransformTest);
 Run("Two-phase moves safely swap names", SwapTest);
 Run("Undo restores the previous names", UndoTest);
@@ -93,6 +95,48 @@ void RecursiveTest()
     });
 }
 
+void OutputFolderTest()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"krename-output-tests-{Guid.NewGuid():N}");
+    var source = Path.Combine(root, "source");
+    var output = Path.Combine(root, "output");
+    var nested = Path.Combine(source, "nested");
+    Directory.CreateDirectory(nested);
+    Directory.CreateDirectory(output);
+    var journal = Path.Combine(root, "journal.json");
+    try
+    {
+        File.WriteAllText(Path.Combine(source, "root.txt"), "root");
+        File.WriteAllText(Path.Combine(nested, "child.txt"), "child");
+        var engine = new RenameEngine(journal);
+        var plan = engine.BuildPreview(new RenameOptions
+        {
+            Folder = source,
+            OutputFolder = output,
+            IncludeSubdirectories = true,
+            Prefix = "x-"
+        });
+
+        True(plan.All(x => x.Status == RenameStatus.Ready), "Output moves should be real actions.");
+        Equal(Path.Combine(output, "x-root.txt"), plan.Single(x => x.CurrentName == "root.txt").TargetPath);
+        Equal(Path.Combine(output, "nested", "x-child.txt"), plan.Single(x => x.CurrentName == "child.txt").TargetPath);
+
+        var applied = engine.Apply(plan);
+        True(applied.Success, applied.Message);
+        True(File.Exists(Path.Combine(output, "x-root.txt")), "Root output file should exist.");
+        True(File.Exists(Path.Combine(output, "nested", "x-child.txt")), "Nested output path should be created.");
+
+        var undone = engine.UndoLast();
+        True(undone.Success, undone.Message);
+        True(File.Exists(Path.Combine(source, "root.txt")), "Undo should restore the root source file.");
+        True(File.Exists(Path.Combine(nested, "child.txt")), "Undo should restore the nested source file.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
 void NoChangeRowsAreIgnoredTest()
 {
     WithTempFolder((folder, journal) =>
@@ -124,6 +168,30 @@ void LiteralSpaceReplacementTest()
             FileNameReplacements = [new TextReplacementRule { Find = " ", ReplaceWith = "_", MatchCase = true }]
         });
         Equal("some_file.txt", plan.Single().NewName);
+        Equal(RenameStatus.Ready, plan.Single().Status);
+    });
+}
+
+void BracketWildcardRegexTest()
+{
+    WithTempFolder((folder, journal) =>
+    {
+        File.WriteAllText(Path.Combine(folder, "google.com  - [YSDUI#sd].txt"), "content");
+        var plan = new RenameEngine(journal).BuildPreview(new RenameOptions
+        {
+            Folder = folder,
+            UseRegex = true,
+            FileNameReplacements =
+            [
+                new TextReplacementRule
+                {
+                    Find = @"^google\.com  - \[[^\]]*\]$",
+                    ReplaceWith = "matched",
+                    MatchCase = true
+                }
+            ]
+        });
+        Equal("matched.txt", plan.Single().NewName);
         Equal(RenameStatus.Ready, plan.Single().Status);
     });
 }

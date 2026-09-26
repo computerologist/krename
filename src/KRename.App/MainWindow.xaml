@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="clr-namespace:KRename.Core;assembly=KRename.Core"
-        Title="KRename" Width="1380" Height="900" MinWidth="1050" MinHeight="720"
-        WindowStartupLocation="CenterScreen" Background="#F4F4F8" KeyDown="Window_KeyDown" Closing="Window_Closing">
+        Title="KRename" Width="1480" Height="920" MinWidth="1120" MinHeight="720"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource WindowBackgroundBrush}" KeyDown="Window_KeyDown" Closing="Window_Closing">
     <Window.Resources>
         <ContextMenu x:Key="ColumnChooserContextMenu" x:Shared="False" Opened="ColumnChooserContextMenu_Opened">
             <MenuItem Header="Subfolder" Tag="Subfolder" IsCheckable="True" Click="ColumnVisibility_Click" />
@@ -13,7 +13,7 @@
             <MenuItem Header="Read only" Tag="ReadOnly" IsCheckable="True" Click="ColumnVisibility_Click" />
             <MenuItem Header="Hidden" Tag="Hidden" IsCheckable="True" Click="ColumnVisibility_Click" />
         </ContextMenu>
-        <Style x:Key="ColumnHeaderChooserStyle" TargetType="DataGridColumnHeader">
+        <Style x:Key="ColumnHeaderChooserStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
             <Setter Property="ContextMenu" Value="{StaticResource ColumnChooserContextMenu}" />
         </Style>
     </Window.Resources>
@@ -21,12 +21,13 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" MinHeight="210" />
-            <RowDefinition Height="305" />
+            <RowDefinition Height="3*" MinHeight="190" />
+            <RowDefinition Height="7" />
+            <RowDefinition Height="2*" MinHeight="145" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Menu Grid.Row="0" Background="#F8F8FA" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="5,2">
+        <Menu Grid.Row="0" Background="{DynamicResource MenuBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="5,2">
             <MenuItem Header="_File">
                 <MenuItem Header="_Load folder…" Click="BrowseButton_Click" InputGestureText="Ctrl+O" />
                 <MenuItem Header="_Refresh file list" Click="PreviewButton_Click" InputGestureText="F5" />
@@ -45,6 +46,8 @@
                     <MenuItem x:Name="ViewReadOnlyMenuItem" Header="_Read only" Tag="ReadOnly" IsCheckable="True" Click="ColumnVisibility_Click" />
                     <MenuItem x:Name="ViewHiddenMenuItem" Header="_Hidden" Tag="Hidden" IsCheckable="True" Click="ColumnVisibility_Click" />
                 </MenuItem>
+                <Separator />
+                <MenuItem x:Name="ViewDarkModeMenuItem" Header="_Dark mode" IsCheckable="True" Click="ThemeToggle_Click" />
             </MenuItem>
             <MenuItem Header="_Run">
                 <MenuItem Header="_Refresh preview" Click="PreviewButton_Click" InputGestureText="F5" />
@@ -58,68 +61,120 @@
             </MenuItem>
         </Menu>
 
-        <Border Grid.Row="1" Margin="16,12,16,8" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+        <Border Grid.Row="1" Margin="16,12,16,8" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*" MinWidth="260" /><ColumnDefinition Width="*" MinWidth="140" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="220" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <ComboBox x:Name="FolderComboBox" Grid.Column="0" IsEditable="True" IsTextSearchEnabled="False" MinHeight="34"
-                          VerticalContentAlignment="Center" ToolTip="Source directory; previous folders are available in the dropdown" KeyDown="RefreshField_KeyDown" />
-                <ComboBox x:Name="MaskTextBox" Grid.Column="1" Text="*.*" IsEditable="True" IsTextSearchEnabled="False" Margin="10,0,0,0"
+                <ComboBox x:Name="MaskTextBox" Grid.Column="0" Text="*.*" IsEditable="True" IsTextSearchEnabled="False"
                           ToolTip="File mask; use semicolons for multiple masks" KeyDown="RefreshField_KeyDown" />
-                <CheckBox x:Name="RecursiveCheckBox" Grid.Column="2" Content="Recurse into subfolders" Margin="16,0,6,0" />
-                <Button Grid.Column="3" Content="Browse folder…" Style="{StaticResource SecondaryButton}" Click="BrowseButton_Click" />
-                <Button x:Name="LoadRefreshButton" Grid.Column="4" Content="Load / refresh files" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="PreviewButton_Click" />
+                <CheckBox x:Name="RecursiveCheckBox" Grid.Column="1" Content="Recurse into subfolders" Margin="16,0,6,0" />
+                <Button x:Name="LoadRefreshButton" Grid.Column="2" Content="Load / refresh files" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="PreviewButton_Click" />
             </Grid>
         </Border>
 
         <Grid Grid.Row="2" Margin="16,0,16,8">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="235" MinWidth="170" />
+                <ColumnDefinition Width="7" />
+                <ColumnDefinition Width="*" MinWidth="300" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                 <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="#ECEBF5" Padding="12,8" CornerRadius="8,8,0,0">
-                        <TextBlock Text="BEFORE — source files" FontWeight="SemiBold" Foreground="#39374D" />
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBrush}" Padding="12,8" CornerRadius="8,8,0,0">
+                        <TextBlock Text="FOLDERS — right-click to use" FontWeight="SemiBold" />
                     </Border>
-                    <DataGrid x:Name="SourceGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" BorderThickness="0"
-                              GridLinesVisibility="Horizontal" AlternatingRowBackground="#F8F8FB" RowHeaderWidth="0"
-                              ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}">
+                    <TreeView x:Name="FolderTree" ItemsSource="{Binding FolderRoots}" TreeViewItem.Expanded="FolderTreeItem_Expanded"
+                              PreviewMouseRightButtonDown="FolderTree_PreviewMouseRightButtonDown">
+                        <TreeView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Use as source folder" Click="UseTreeFolderAsSource_Click" />
+                                <MenuItem Header="Use as output folder" Click="UseTreeFolderAsOutput_Click" />
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+                </DockPanel>
+            </Border>
+            <GridSplitter Grid.Column="1" Width="7" HorizontalAlignment="Stretch" Background="Transparent" />
+            <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="10,9,10,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <ComboBox x:Name="FolderComboBox" IsEditable="True" IsTextSearchEnabled="False" MinHeight="34"
+                                  VerticalContentAlignment="Center" ToolTip="Source folder; press Enter to load" KeyDown="RefreshField_KeyDown" />
+                        <Button Grid.Column="1" Content="Browse…" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="BrowseButton_Click" />
+                    </Grid>
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource BeforeHeaderBrush}" Padding="12,8">
+                        <TextBlock Text="BEFORE — source files (double-click a name to edit)" FontWeight="SemiBold" />
+                    </Border>
+                    <DataGrid x:Name="SourceGrid" AutoGenerateColumns="False" IsReadOnly="False" CanUserAddRows="False" BorderThickness="0"
+                              GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
+                              ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}" MouseDoubleClick="SourceGrid_MouseDoubleClick"
+                              CellEditEnding="SourceGrid_CellEditEnding" PreviewMouseRightButtonDown="SourceGrid_PreviewMouseRightButtonDown">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Open containing folder in Explorer" Click="OpenSelectedFileInExplorer_Click" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="File name" Binding="{Binding CurrentName}" Width="1.5*" />
-                            <DataGridTextColumn x:Name="SourceSubfolderColumn" Header="Subfolder" Binding="{Binding RelativeDirectory}" Width="*" />
-                            <DataGridTextColumn x:Name="SourceSizeColumn" Header="Size" Binding="{Binding FileSizeDisplay}" Width="78" />
-                            <DataGridTextColumn x:Name="SourceCreatedColumn" Header="Created" Binding="{Binding CreatedAt, StringFormat={}{0:g}}" Width="125" />
-                            <DataGridTextColumn x:Name="SourceModifiedColumn" Header="Modified" Binding="{Binding ModifiedAt, StringFormat={}{0:g}}" Width="125" />
-                            <DataGridCheckBoxColumn x:Name="SourceReadOnlyColumn" Header="Read only" Binding="{Binding IsReadOnly}" Width="72" />
-                            <DataGridCheckBoxColumn x:Name="SourceHiddenColumn" Header="Hidden" Binding="{Binding IsHidden}" Width="60" />
+                            <DataGridTemplateColumn x:Name="SourceFileNameColumn" Header="File name" Width="1.5*">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding CurrentName}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate><DataTemplate><TextBox Text="{Binding CurrentName, Mode=OneWay}" /></DataTemplate></DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn x:Name="SourceSubfolderColumn" IsReadOnly="True" Header="Subfolder" Binding="{Binding RelativeDirectory}" Width="*" />
+                            <DataGridTextColumn x:Name="SourceSizeColumn" IsReadOnly="True" Header="Size" Binding="{Binding FileSizeDisplay}" Width="78" />
+                            <DataGridTextColumn x:Name="SourceCreatedColumn" IsReadOnly="True" Header="Created" Binding="{Binding CreatedAt, StringFormat={}{0:g}}" Width="125" />
+                            <DataGridTextColumn x:Name="SourceModifiedColumn" IsReadOnly="True" Header="Modified" Binding="{Binding ModifiedAt, StringFormat={}{0:g}}" Width="125" />
+                            <DataGridCheckBoxColumn x:Name="SourceReadOnlyColumn" IsReadOnly="True" Header="Read only" Binding="{Binding IsReadOnly}" Width="72" />
+                            <DataGridCheckBoxColumn x:Name="SourceHiddenColumn" IsReadOnly="True" Header="Hidden" Binding="{Binding IsHidden}" Width="60" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
             </Border>
-            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent" />
-            <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+            <GridSplitter Grid.Column="3" Width="8" HorizontalAlignment="Stretch" Background="Transparent" />
+            <Border Grid.Column="4" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                 <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="#E8E5FF" Padding="12,8" CornerRadius="8,8,0,0">
-                        <TextBlock Text="AFTER — rename preview" FontWeight="SemiBold" Foreground="#493AAF" />
+                    <Grid DockPanel.Dock="Top" Margin="10,9,10,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <ComboBox x:Name="DestinationComboBox" IsEditable="True" IsTextSearchEnabled="False" MinHeight="34"
+                                  ToolTip="Optional output folder; blank means rename in place" KeyDown="RefreshField_KeyDown" />
+                        <Button Grid.Column="1" Content="Browse…" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="BrowseOutputButton_Click" />
+                        <Button Grid.Column="2" Content="Use source" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="ClearOutputFolder_Click" />
+                    </Grid>
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource AfterHeaderBrush}" Padding="12,8">
+                        <TextBlock Text="AFTER — rename preview (output blank = in place)" FontWeight="SemiBold" />
                     </Border>
                     <DataGrid x:Name="PreviewGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" BorderThickness="0"
-                              GridLinesVisibility="Horizontal" AlternatingRowBackground="#F8F8FB" RowHeaderWidth="0"
+                              GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
                               ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}">
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
                                 <Setter Property="ToolTip" Value="{Binding Message}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Ready}">
-                                        <Setter Property="Background" Value="#E5F6E9" />
-                                        <Setter Property="Foreground" Value="#166534" />
+                                        <Setter Property="Background" Value="{DynamicResource ReadyBackgroundBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource ReadyForegroundBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Error}">
-                                        <Setter Property="Background" Value="#FDE8E8" />
-                                        <Setter Property="Foreground" Value="#A11212" />
+                                        <Setter Property="Background" Value="{DynamicResource ErrorBackgroundBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource ErrorForegroundBrush}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Unchanged}">
-                                        <Setter Property="Background" Value="#EEEEF2" />
-                                        <Setter Property="Foreground" Value="#6A687A" />
+                                        <Setter Property="Background" Value="{DynamicResource UnchangedBackgroundBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource UnchangedForegroundBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -139,7 +194,9 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="3" Margin="16,0,16,10" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+        <GridSplitter x:Name="OptionsPanelSplitter" Grid.Row="3" Height="7" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{DynamicResource BorderBrush}" Margin="16,0" />
+
+        <Border Grid.Row="4" Margin="16,0,16,10" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <TabControl BorderThickness="0" Padding="4">
                 <TabItem Header="Filename replacement">
                     <Grid Margin="12">
@@ -153,7 +210,7 @@
                                     <StackPanel Margin="0,0,5,0"><TextBlock Text="Prefix" Margin="0,0,0,4" /><ComboBox x:Name="PrefixTextBox" IsEditable="True" IsTextSearchEnabled="False" /></StackPanel>
                                     <StackPanel Grid.Column="1" Margin="5,0,0,0"><TextBlock Text="Suffix" Margin="0,0,0,4" /><ComboBox x:Name="SuffixTextBox" IsEditable="True" IsTextSearchEnabled="False" /></StackPanel>
                                 </Grid>
-                                <TextBlock Text="Order: replace → cleanup → split/trim → affixes → date/time → numbering" TextWrapping="Wrap" Foreground="#6A687A" FontSize="11" Margin="0,12,0,0" />
+                                <TextBlock Text="Order: replace → cleanup → split/trim → affixes → date/time → numbering" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,12,0,0" />
                             </StackPanel>
                         </GroupBox>
                         <GroupBox Grid.Column="1" Header="Replace filename characters" Margin="8,0" Padding="10">
@@ -201,7 +258,8 @@
                                 </WrapPanel>
                                 <Separator Margin="0,8" />
                                 <WrapPanel>
-                                    <CheckBox x:Name="RegexCheckBox" Content="Rules are regular expressions" />
+                                    <CheckBox x:Name="RegexCheckBox" Content="Rules are regular expressions"
+                                              ToolTip="Example: ^google\.com  - \[[^\]]*\]$ matches any text inside the brackets" />
                                 </WrapPanel>
                             </StackPanel>
                         </GroupBox>
@@ -278,7 +336,7 @@
                                 <CheckBox x:Name="UseCurrentDateTimeCheckBox" Content="Use current date and time" IsChecked="True" />
                                 <TextBlock Text="Custom date" Margin="0,12,0,4" /><DatePicker x:Name="CustomDatePicker" />
                                 <TextBlock Text="Custom time (HH:mm:ss)" Margin="0,10,0,4" /><ComboBox x:Name="CustomTimeTextBox" Text="00:00:00" IsEditable="True" IsTextSearchEnabled="False" />
-                                <TextBlock Text="The selected components are appended to the filename. Use the suffix field for a leading separator." TextWrapping="Wrap" Foreground="#6A687A" FontSize="11" Margin="0,12,0,0" />
+                                <TextBlock Text="The selected components are appended to the filename. Use the suffix field for a leading separator." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,12,0,0" />
                             </StackPanel>
                         </GroupBox>
                         <GroupBox Grid.Column="1" Header="Date in filename" Margin="8,0" Padding="10">
@@ -311,10 +369,10 @@
             </TabControl>
         </Border>
 
-        <Border Grid.Row="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="18,10">
+        <Border Grid.Row="5" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="18,10">
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusTextBlock" Text="Choose a folder and preview your changes." VerticalAlignment="Center" Foreground="#555466" />
+                <TextBlock x:Name="StatusTextBlock" Text="Choose a folder and preview your changes." VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                 <Button Grid.Column="1" Content="Refresh preview" Style="{StaticResource SecondaryButton}" Margin="8,0" Click="PreviewButton_Click" />
                 <Button x:Name="ApplyButton" Grid.Column="2" Content="Apply rename" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="ApplyButton_Click" IsEnabled="False" />
             </Grid>

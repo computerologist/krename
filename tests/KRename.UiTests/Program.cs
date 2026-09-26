@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -26,6 +27,11 @@ internal static class Program
         Run("A literal-space filename rule appears in the preview", LiteralSpaceRuleAppearsInPreview);
         Run("Gray no-change rows do not disable applicable changes", GrayRowsDoNotDisableChanges);
         Run("Enter in folder and wildcard fields refreshes the file list", EnterRefreshesFileList);
+        Run("Output folder preview preserves path and remembers history", OutputFolderPreviewAndHistory);
+        Run("Applying a rename refreshes the current lists", ApplyRenameRefreshesLists);
+        Run("Direct filename edits rename and refresh", DirectFilenameEditRefreshes);
+        Run("Folder tree nodes load child directories lazily", FolderTreeLoadsChildren);
+        Run("Dark mode and the options splitter are enabled by default", DarkModeAndSplitterDefaults);
 
         if (Failures.Count > 0)
         {
@@ -47,7 +53,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Failures.Add($"{name}: {ex.Message}");
+            Failures.Add($"{name}: {ex}");
         }
     }
 
@@ -192,6 +198,93 @@ internal static class Program
             mask.Text = "*.txt";
             PressEnter(mask);
             Equal("two.txt", Plan(window, "SourceGrid").Single().CurrentName);
+        });
+    }
+
+    private static void OutputFolderPreviewAndHistory()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "one.txt"), "1");
+            var settings = Settings(first, first);
+            var window = new MainWindow(settings, persistSettings: false);
+            Control<ComboBox>(window, "DestinationComboBox").Text = second;
+            Control<ComboBox>(window, "PrefixTextBox").Text = "x-";
+
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Equal(Path.Combine(second, "x-one.txt"), Plan(window, "PreviewGrid").Single().TargetPath);
+            Equal(second, settings.LastOutputFolder);
+            Equal(second, settings.RecentOutputFolders[0]);
+        });
+    }
+
+    private static void ApplyRenameRefreshesLists()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "NeedsCase.txt"), "1");
+            var settings = Settings(first, first);
+            settings.ConfirmBeforeRename = false;
+            var journal = Path.Combine(Path.GetDirectoryName(first)!, "apply-journal.json");
+            var window = new MainWindow(settings, persistSettings: false, showDialogs: false, engine: new RenameEngine(journal));
+            Control<RadioButton>(window, "CaseLowerRadio").IsChecked = true;
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Control<Button>(window, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            True(File.Exists(Path.Combine(first, "needscase.txt")), "The lowercase rename should be applied.");
+            var refreshed = Plan(window, "SourceGrid").Single();
+            Equal("needscase.txt", refreshed.CurrentName);
+            Equal(RenameStatus.Unchanged, refreshed.Status);
+        });
+    }
+
+    private static void DirectFilenameEditRefreshes()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "old.txt"), "1");
+            var journal = Path.Combine(Path.GetDirectoryName(first)!, "edit-journal.json");
+            var window = new MainWindow(Settings(first, first), persistSettings: false, showDialogs: false, engine: new RenameEngine(journal));
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var item = Plan(window, "SourceGrid").Single();
+            var method = typeof(MainWindow).GetMethod("RenameSingleSourceFile", BindingFlags.Instance | BindingFlags.NonPublic)
+                         ?? throw new Exception("Direct rename handler was not found.");
+
+            method.Invoke(window, [item, "new.txt"]);
+
+            True(File.Exists(Path.Combine(first, "new.txt")), "The direct filename edit should rename the file.");
+            Equal("new.txt", Plan(window, "SourceGrid").Single().CurrentName);
+        });
+    }
+
+    private static void FolderTreeLoadsChildren()
+    {
+        WithTempFolders((first, second) =>
+        {
+            var child = Path.Combine(first, "child");
+            Directory.CreateDirectory(child);
+            var node = new FolderTreeNode(first);
+
+            node.LoadChildren();
+
+            True(node.Children.Any(x => string.Equals(x.FullPath, child, StringComparison.OrdinalIgnoreCase)),
+                "The expanded tree node should contain its child directory.");
+            True(node.Children.All(x => !x.IsPlaceholder), "The loading placeholder should be removed after expansion.");
+        });
+    }
+
+    private static void DarkModeAndSplitterDefaults()
+    {
+        WithTempFolders((first, second) =>
+        {
+            var settings = Settings(first, first);
+            var window = new MainWindow(settings, persistSettings: false);
+
+            True(settings.UseDarkMode, "Dark mode should default to enabled.");
+            True(Control<MenuItem>(window, "ViewDarkModeMenuItem").IsChecked, "The dark-mode menu item should be checked.");
+            _ = Control<GridSplitter>(window, "OptionsPanelSplitter");
         });
     }
 

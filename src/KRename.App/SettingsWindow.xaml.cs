@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
         ConfirmBeforeRenameCheckBox.IsChecked = _settings.ConfirmBeforeRename;
         RememberLastFolderCheckBox.IsChecked = _settings.RememberLastFolder;
         RecurseByDefaultCheckBox.IsChecked = _settings.RecurseByDefault;
+        DarkModeCheckBox.IsChecked = _settings.UseDarkMode;
     }
 
     private void BrowseLogButton_Click(object sender, RoutedEventArgs e)
@@ -60,6 +61,7 @@ public partial class SettingsWindow : Window
         _settings.ConfirmBeforeRename = ConfirmBeforeRenameCheckBox.IsChecked == true;
         _settings.RememberLastFolder = RememberLastFolderCheckBox.IsChecked == true;
         _settings.RecurseByDefault = RecurseByDefaultCheckBox.IsChecked == true;
+        _settings.UseDarkMode = DarkModeCheckBox.IsChecked == true;
         DialogResult = true;
     }
 }

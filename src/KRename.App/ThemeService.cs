@@ -23,10 +23,13 @@ public static class ThemeService
         ["AfterHeaderBrush"] = "#2B2842",
         ["AlternateRowBrush"] = "#252630",
         ["ReadyBackgroundBrush"] = "#173B2A",
+        ["ReadyAlternateBackgroundBrush"] = "#1D4934",
         ["ReadyForegroundBrush"] = "#8BE2A8",
         ["ErrorBackgroundBrush"] = "#4A2024",
+        ["ErrorAlternateBackgroundBrush"] = "#57262B",
         ["ErrorForegroundBrush"] = "#FF9DA4",
         ["UnchangedBackgroundBrush"] = "#30313A",
+        ["UnchangedAlternateBackgroundBrush"] = "#383944",
         ["UnchangedForegroundBrush"] = "#C0BFCA",
         ["SecondaryButtonBrush"] = "#343643"
     };
@@ -47,10 +50,13 @@ public static class ThemeService
         ["AfterHeaderBrush"] = "#E8E5FF",
         ["AlternateRowBrush"] = "#F8F8FB",
         ["ReadyBackgroundBrush"] = "#E5F6E9",
+        ["ReadyAlternateBackgroundBrush"] = "#D8EFDE",
         ["ReadyForegroundBrush"] = "#166534",
         ["ErrorBackgroundBrush"] = "#FDE8E8",
+        ["ErrorAlternateBackgroundBrush"] = "#F8DCDC",
         ["ErrorForegroundBrush"] = "#A11212",
         ["UnchangedBackgroundBrush"] = "#EEEEF2",
+        ["UnchangedAlternateBackgroundBrush"] = "#E5E5EA",
         ["UnchangedForegroundBrush"] = "#6A687A",
         ["SecondaryButtonBrush"] = "#ECEBF5"
     };
@@ -73,6 +79,26 @@ public static class ThemeService
 
     private static SolidColorBrush Brush(string color) =>
         new((Color)ColorConverter.ConvertFromString(color));
+
+    public static void ApplyToContextMenu(System.Windows.Controls.ContextMenu menu)
+    {
+        if (Application.Current is null) return;
+        menu.Background = (Brush)Application.Current.Resources["SurfaceBrush"];
+        menu.Foreground = (Brush)Application.Current.Resources["TextPrimaryBrush"];
+        menu.BorderBrush = (Brush)Application.Current.Resources["BorderBrush"];
+        foreach (var item in menu.Items)
+        {
+            if (item is System.Windows.Controls.MenuItem menuItem)
+            {
+                menuItem.Background = menu.Background;
+                menuItem.Foreground = menu.Foreground;
+            }
+            else if (item is System.Windows.Controls.Separator separator)
+            {
+                separator.Background = menu.BorderBrush;
+            }
+        }
+    }
 
     public static void ApplyToTitleBar(Window window, bool darkMode)
     {

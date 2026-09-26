@@ -41,6 +41,8 @@ internal static class Program
         Run("Folder tree nodes load child directories lazily", FolderTreeLoadsChildren);
         Run("Folder tree expands and selects the active source path", FolderTreeTracksActiveSource);
         Run("Dark mode and the options splitter are enabled by default", DarkModeAndSplitterDefaults);
+        Run("Generated context menus follow the active theme", ContextMenusFollowActiveTheme);
+        Run("Ready and error preview rows alternate in both themes", PreviewStatusRowsAlternateInBothThemes);
 
         if (Failures.Count > 0)
         {
@@ -474,6 +476,107 @@ internal static class Program
             True(Control<MenuItem>(window, "ViewDarkModeMenuItem").IsChecked, "The dark-mode menu item should be checked.");
             _ = Control<GridSplitter>(window, "OptionsPanelSplitter");
         });
+    }
+
+    private static void ContextMenusFollowActiveTheme()
+    {
+        try
+        {
+            foreach (var darkMode in new[] { true, false })
+            {
+                ThemeService.Apply(darkMode);
+                var item = new MenuItem { Header = "Cut" };
+                var menu = new ContextMenu();
+                menu.Items.Add(item);
+
+                menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+
+                SameBrush(Application.Current.Resources["SurfaceBrush"], menu.Background);
+                SameBrush(Application.Current.Resources["TextPrimaryBrush"], menu.Foreground);
+                SameBrush(Application.Current.Resources["SurfaceBrush"], item.Background);
+                SameBrush(Application.Current.Resources["TextPrimaryBrush"], item.Foreground);
+            }
+        }
+        finally
+        {
+            ThemeService.Apply(true);
+        }
+    }
+
+    private static void PreviewStatusRowsAlternateInBothThemes()
+    {
+        try
+        {
+            foreach (var darkMode in new[] { true, false })
+            {
+                AssertPreviewAlternation(darkMode, RenameStatus.Ready,
+                    "ReadyBackgroundBrush", "ReadyAlternateBackgroundBrush");
+                AssertPreviewAlternation(darkMode, RenameStatus.Error,
+                    "ErrorBackgroundBrush", "ErrorAlternateBackgroundBrush");
+            }
+        }
+        finally
+        {
+            ThemeService.Apply(true);
+        }
+    }
+
+    private static void AssertPreviewAlternation(bool darkMode, RenameStatus status,
+        string evenBrushKey, string oddBrushKey)
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "alpha.txt"), "1");
+            File.WriteAllText(Path.Combine(first, "beta.txt"), "2");
+            var settings = Settings(first, first);
+            settings.UseDarkMode = darkMode;
+            var window = new MainWindow(settings, persistSettings: false);
+            if (status == RenameStatus.Ready)
+            {
+                Control<ComboBox>(window, "PrefixTextBox").Text = "x-";
+            }
+            else
+            {
+                Control<CheckBox>(window, "ReplaceEntireNameCheckBox").IsChecked = true;
+                Control<ComboBox>(window, "EntireNameTextBox").Text = "same";
+            }
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            window.Show();
+            try
+            {
+                var grid = Control<DataGrid>(window, "PreviewGrid");
+                grid.UpdateLayout();
+                var items = Plan(window, "PreviewGrid");
+                Equal(2, items.Count);
+                True(items.All(x => x.Status == status), $"Both preview rows should be {status}.");
+                var firstRow = MaterializeRow(grid, items[0]);
+                var secondRow = MaterializeRow(grid, items[1]);
+                SameBrush(Application.Current.Resources[evenBrushKey], firstRow.Background);
+                SameBrush(Application.Current.Resources[oddBrushKey], secondRow.Background);
+                True(((SolidColorBrush)firstRow.Background).Color != ((SolidColorBrush)secondRow.Background).Color,
+                    $"{status} rows should have visibly different alternating backgrounds in {(darkMode ? "dark" : "light")} mode.");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    private static DataGridRow MaterializeRow(DataGrid grid, object item)
+    {
+        grid.ScrollIntoView(item);
+        grid.UpdateLayout();
+        return grid.ItemContainerGenerator.ContainerFromItem(item) as DataGridRow
+               ?? throw new Exception("The preview row was not materialized.");
+    }
+
+    private static void SameBrush(object expected, Brush actual)
+    {
+        if (expected is not SolidColorBrush expectedBrush || actual is not SolidColorBrush actualBrush)
+            throw new Exception("Expected solid-color theme brushes.");
+        Equal(expectedBrush.Color, actualBrush.Color);
     }
 
     private static AppSettings Settings(string lastFolder, params string[] recent) => new()

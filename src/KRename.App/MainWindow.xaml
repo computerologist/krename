@@ -177,8 +177,8 @@
                         <TextBlock Text="Target Preview" FontWeight="SemiBold" />
                     </Border>
                     <DataGrid x:Name="PreviewGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" BorderThickness="0"
-                              GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
-                              ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}" PreviewMouseRightButtonDown="PreviewGrid_PreviewMouseRightButtonDown">
+                              GridLinesVisibility="Horizontal" RowHeaderWidth="0"
+                              AlternationCount="2" ColumnHeaderStyle="{StaticResource ColumnHeaderChooserStyle}" PreviewMouseRightButtonDown="PreviewGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Skip" Click="SkipTargetFile_Click" />
@@ -189,18 +189,39 @@
                                 <Setter Property="ToolTip" Value="{Binding Message}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Ready}">
-                                        <Setter Property="Background" Value="{DynamicResource ReadyBackgroundBrush}" />
                                         <Setter Property="Foreground" Value="{DynamicResource ReadyForegroundBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Error}">
-                                        <Setter Property="Background" Value="{DynamicResource ErrorBackgroundBrush}" />
                                         <Setter Property="Foreground" Value="{DynamicResource ErrorForegroundBrush}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Unchanged}">
-                                        <Setter Property="Background" Value="{DynamicResource UnchangedBackgroundBrush}" />
                                         <Setter Property="Foreground" Value="{DynamicResource UnchangedForegroundBrush}" />
                                     </DataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Ready}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="0" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource ReadyBackgroundBrush}" />
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Ready}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="1" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource ReadyAlternateBackgroundBrush}" />
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Error}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="0" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource ErrorBackgroundBrush}" />
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Error}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="1" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource ErrorAlternateBackgroundBrush}" />
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Unchanged}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="0" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource UnchangedBackgroundBrush}" />
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions><Condition Binding="{Binding Status}" Value="{x:Static core:RenameStatus.Unchanged}" /><Condition Binding="{Binding AlternationIndex, RelativeSource={RelativeSource Self}}" Value="1" /></MultiDataTrigger.Conditions>
+                                        <Setter Property="Background" Value="{DynamicResource UnchangedAlternateBackgroundBrush}" />
+                                    </MultiDataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </DataGrid.RowStyle>

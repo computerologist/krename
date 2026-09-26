@@ -17,10 +17,13 @@
         <SolidColorBrush x:Key="AfterHeaderBrush" Color="#2B2842" />
         <SolidColorBrush x:Key="AlternateRowBrush" Color="#252630" />
         <SolidColorBrush x:Key="ReadyBackgroundBrush" Color="#173B2A" />
+        <SolidColorBrush x:Key="ReadyAlternateBackgroundBrush" Color="#1D4934" />
         <SolidColorBrush x:Key="ReadyForegroundBrush" Color="#8BE2A8" />
         <SolidColorBrush x:Key="ErrorBackgroundBrush" Color="#4A2024" />
+        <SolidColorBrush x:Key="ErrorAlternateBackgroundBrush" Color="#57262B" />
         <SolidColorBrush x:Key="ErrorForegroundBrush" Color="#FF9DA4" />
         <SolidColorBrush x:Key="UnchangedBackgroundBrush" Color="#30313A" />
+        <SolidColorBrush x:Key="UnchangedAlternateBackgroundBrush" Color="#383944" />
         <SolidColorBrush x:Key="UnchangedForegroundBrush" Color="#C0BFCA" />
         <SolidColorBrush x:Key="SecondaryButtonBrush" Color="#343643" />
         <Style TargetType="Window">

@@ -177,7 +177,7 @@ void BracketWildcardRegexTest()
 {
     WithTempFolder((folder, journal) =>
     {
-        File.WriteAllText(Path.Combine(folder, "google.com - [sample123] trailing title_edited.mp4"), "content");
+        File.WriteAllText(Path.Combine(folder, "prefix google.com - [sample123] trailing title_edited.mp4"), "content");
         var plan = new RenameEngine(journal).BuildPreview(new RenameOptions
         {
             Folder = folder,
@@ -185,14 +185,14 @@ void BracketWildcardRegexTest()
             [
                 new TextReplacementRule
                 {
-                    Find = @"^google[.]com\s+-\s+\[[^]]+\]",
+                    Find = @"google[.]com\s+-\s+\[[^]]+\]",
                     ReplaceWith = "matched",
                     MatchCase = true,
                     UseRegex = true
                 }
             ]
         });
-        Equal("matched trailing title_edited.mp4", plan.Single().NewName);
+        Equal("prefix matched trailing title_edited.mp4", plan.Single().NewName);
         Equal(RenameStatus.Ready, plan.Single().Status);
     });
 }

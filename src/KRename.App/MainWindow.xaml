@@ -250,7 +250,7 @@
                                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,7,0,0">
                                         <CheckBox x:Name="NameRuleCaseSensitiveCheckBox" Content="Case-sensitive match" />
                                         <CheckBox x:Name="NameRuleRegexCheckBox" Content="Regular expression" Margin="14,0,0,0"
-                                                  ToolTip="The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\]" />
+                                                  ToolTip="The pattern applies to the filename without its extension. Example: google[.]com\s+-\s+\[[^]]+\]" />
                                     </WrapPanel>
                                 </Grid>
                                 <ListBox x:Name="NameRulesList" Grid.Row="1" Margin="0,8">

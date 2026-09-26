@@ -2,10 +2,12 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using KRename.Core;
 using Microsoft.Win32;
 
@@ -27,6 +29,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<RenamePlanItem> _currentPlan = [];
     private AppSettings _settings;
     private string _manualOutputFolder = "";
+    private RenamePlanItem? _contextSourceItem;
 
     public ObservableCollection<FolderTreeNode> FolderRoots => _folderRoots;
 
@@ -50,6 +53,7 @@ public partial class MainWindow : Window
         _showDialogs = showDialogs;
         ThemeService.Apply(_settings.UseDarkMode);
         InitializeComponent();
+        SourceInitialized += (_, _) => ThemeService.ApplyToTitleBar(this, _settings.UseDarkMode);
         DataContext = this;
         RegisterHistoryFields();
         foreach (var folder in _settings.RecentFolders ?? [])
@@ -149,6 +153,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Enter text or a pattern to find.", "Filename replacement", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        if (!ValidateRegexPattern(NameFindTextBox.Text, NameRuleRegexCheckBox.IsChecked == true, "filename filter")) return;
         _nameRules.Add(new TextReplacementRule
         {
             Find = NameFindTextBox.Text,
@@ -161,19 +166,28 @@ public partial class MainWindow : Window
         TrySaveSettings();
         NameFindTextBox.Text = "";
         NameReplaceTextBox.Text = "";
+        RefreshPreviewIfFolderValid();
     }
 
     private void RemoveNameRule_Click(object sender, RoutedEventArgs e)
     {
-        if (NameRulesList.SelectedItem is TextReplacementRule rule) _nameRules.Remove(rule);
+        if (NameRulesList.SelectedItem is not TextReplacementRule rule) return;
+        _nameRules.Remove(rule);
+        RefreshPreviewIfFolderValid();
     }
 
     private void DeleteNameRule_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: TextReplacementRule rule }) _nameRules.Remove(rule);
+        if (sender is not Button { Tag: TextReplacementRule rule }) return;
+        _nameRules.Remove(rule);
+        RefreshPreviewIfFolderValid();
     }
 
-    private void ClearNameRules_Click(object sender, RoutedEventArgs e) => _nameRules.Clear();
+    private void ClearNameRules_Click(object sender, RoutedEventArgs e)
+    {
+        _nameRules.Clear();
+        RefreshPreviewIfFolderValid();
+    }
 
     private void LoadNameRule_Click(object sender, RoutedEventArgs e)
     {
@@ -194,9 +208,11 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Enter an extension to find, without the dot.", "Extension replacement", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        var extensionPattern = ExtensionFindTextBox.Text.TrimStart('.');
+        if (!ValidateRegexPattern(extensionPattern, ExtensionRuleRegexCheckBox.IsChecked == true, "extension filter")) return;
         _extensionRules.Add(new TextReplacementRule
         {
-            Find = ExtensionFindTextBox.Text.TrimStart('.'),
+            Find = extensionPattern,
             ReplaceWith = ExtensionReplaceTextBox.Text.TrimStart('.'),
             MatchCase = ExtensionRuleCaseSensitiveCheckBox.IsChecked == true,
             UseRegex = ExtensionRuleRegexCheckBox.IsChecked == true
@@ -206,19 +222,28 @@ public partial class MainWindow : Window
         TrySaveSettings();
         ExtensionFindTextBox.Text = "";
         ExtensionReplaceTextBox.Text = "";
+        RefreshPreviewIfFolderValid();
     }
 
     private void RemoveExtensionRule_Click(object sender, RoutedEventArgs e)
     {
-        if (ExtensionRulesList.SelectedItem is TextReplacementRule rule) _extensionRules.Remove(rule);
+        if (ExtensionRulesList.SelectedItem is not TextReplacementRule rule) return;
+        _extensionRules.Remove(rule);
+        RefreshPreviewIfFolderValid();
     }
 
     private void DeleteExtensionRule_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: TextReplacementRule rule }) _extensionRules.Remove(rule);
+        if (sender is not Button { Tag: TextReplacementRule rule }) return;
+        _extensionRules.Remove(rule);
+        RefreshPreviewIfFolderValid();
     }
 
-    private void ClearExtensionRules_Click(object sender, RoutedEventArgs e) => _extensionRules.Clear();
+    private void ClearExtensionRules_Click(object sender, RoutedEventArgs e)
+    {
+        _extensionRules.Clear();
+        RefreshPreviewIfFolderValid();
+    }
 
     private void LoadExtensionRule_Click(object sender, RoutedEventArgs e)
     {
@@ -246,8 +271,6 @@ public partial class MainWindow : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
-            NameRulesList.Items.Refresh();
-            ExtensionRulesList.Items.Refresh();
             RefreshPreviewIfFolderValid();
         });
     }
@@ -255,6 +278,24 @@ public partial class MainWindow : Window
     private void RefreshPreviewIfFolderValid()
     {
         if (Directory.Exists(GetSelectedFolder())) BuildPreview();
+    }
+
+    private bool ValidateRegexPattern(string pattern, bool useRegex, string label)
+    {
+        if (!useRegex) return true;
+        try
+        {
+            _ = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(2));
+            return true;
+        }
+        catch (ArgumentException ex)
+        {
+            var message = $"The {label} regular expression is invalid: {ex.Message}";
+            StatusTextBlock.Text = message;
+            if (_showDialogs)
+                MessageBox.Show(this, message, "Invalid regular expression", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
     }
 
     private void PreviewButton_Click(object sender, RoutedEventArgs e) => BuildPreview();
@@ -341,6 +382,7 @@ public partial class MainWindow : Window
                     : ready > 0
                         ? $"{_currentPlan.Count} files loaded; {ready} green row{(ready == 1 ? "" : "s")} will be renamed and {unchanged} gray no-change row{(unchanged == 1 ? " is" : "s are")} ignored."
                         : $"{_currentPlan.Count} files loaded; all rows are gray because no filenames would change.";
+            if (IsVisible) ExpandFolderTreeTo(selectedFolder);
         }
         catch (Exception ex)
         {
@@ -432,6 +474,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         _settings = dialog.SavedSettings;
         ThemeService.Apply(_settings.UseDarkMode);
+        ThemeService.ApplyToTitleBar(this, _settings.UseDarkMode);
         ViewDarkModeMenuItem.IsChecked = _settings.UseDarkMode;
         if (_settings.RememberLastFolder)
         {
@@ -605,6 +648,67 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ExpandFolderTreeTo(string folder)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(folder);
+            var rootPath = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrEmpty(rootPath)) return;
+            var current = _folderRoots.FirstOrDefault(x =>
+                string.Equals(Path.GetFullPath(x.FullPath), Path.GetFullPath(rootPath), StringComparison.OrdinalIgnoreCase));
+            if (current is null) return;
+
+            foreach (var root in _folderRoots) ClearTreeSelection(root);
+            var relative = Path.GetRelativePath(current.FullPath, fullPath);
+            if (relative != ".")
+            {
+                var currentPath = current.FullPath;
+                foreach (var part in relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                             StringSplitOptions.RemoveEmptyEntries))
+                {
+                    current.IsExpanded = true;
+                    current.LoadChildren();
+                    currentPath = Path.Combine(currentPath, part);
+                    var next = current.Children.FirstOrDefault(x => !x.IsPlaceholder &&
+                        string.Equals(Path.GetFullPath(x.FullPath), Path.GetFullPath(currentPath), StringComparison.OrdinalIgnoreCase));
+                    if (next is null) return;
+                    current = next;
+                }
+            }
+
+            current.IsSelected = true;
+            var selectedNode = current;
+            Dispatcher.BeginInvoke(() =>
+            {
+                FolderTree.UpdateLayout();
+                FindTreeViewItem(FolderTree, selectedNode)?.BringIntoView();
+            }, DispatcherPriority.Loaded);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // The file list remains usable even if part of the shell tree cannot be enumerated.
+        }
+    }
+
+    private static void ClearTreeSelection(FolderTreeNode node)
+    {
+        node.IsSelected = false;
+        foreach (var child in node.Children.Where(x => !x.IsPlaceholder)) ClearTreeSelection(child);
+    }
+
+    private static TreeViewItem? FindTreeViewItem(ItemsControl parent, object item)
+    {
+        if (parent.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem direct) return direct;
+        foreach (var childItem in parent.Items)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromItem(childItem) is not TreeViewItem child) continue;
+            var match = FindTreeViewItem(child, item);
+            if (match is not null) return match;
+        }
+        return null;
+    }
+
     private void FolderTreeItem_Expanded(object sender, RoutedEventArgs e)
     {
         if (e.OriginalSource is TreeViewItem { DataContext: FolderTreeNode node }) node.LoadChildren();
@@ -638,6 +742,27 @@ public partial class MainWindow : Window
         BuildPreview();
     }
 
+    private void OpenTreeFolderInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (FolderTree.SelectedItem is not FolderTreeNode { IsPlaceholder: false } node || !Directory.Exists(node.FullPath)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(node.FullPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            if (_showDialogs)
+                MessageBox.Show(this, $"Explorer could not be opened: {ex.Message}", "Open in Explorer",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void Mask_DropDownClosed(object sender, EventArgs e)
+    {
+        if (MaskTextBox.SelectedItem is string selected) MaskTextBox.Text = selected;
+        RefreshPreviewIfFolderValid();
+    }
+
     private void SourceFolder_DropDownClosed(object sender, EventArgs e)
     {
         if (FolderComboBox.SelectedItem is string selected) FolderComboBox.Text = selected;
@@ -660,12 +785,15 @@ public partial class MainWindow : Window
     private void SourceGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-        if (row is not null) SourceGrid.SelectedItem = row.Item;
+        _contextSourceItem = row?.Item as RenamePlanItem;
+        if (_contextSourceItem is not null) SourceGrid.SelectedItem = _contextSourceItem;
     }
 
     private void OpenSelectedFileInExplorer_Click(object sender, RoutedEventArgs e)
     {
-        if (SourceGrid.SelectedItem is not RenamePlanItem item || !File.Exists(item.SourcePath)) return;
+        var item = _contextSourceItem ?? SourceGrid.SelectedItem as RenamePlanItem;
+        _contextSourceItem = null;
+        if (item is null || !File.Exists(item.SourcePath)) return;
         try
         {
             Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.SourcePath}\"") { UseShellExecute = true });
@@ -683,14 +811,23 @@ public partial class MainWindow : Window
         var cell = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
         if (cell?.Column != SourceFileNameColumn || cell.DataContext is not RenamePlanItem item) return;
         SourceGrid.CurrentCell = new DataGridCellInfo(item, SourceFileNameColumn);
-        SourceGrid.BeginEdit();
+        if (!SourceGrid.BeginEdit()) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            var editor = FindVisualChild<TextBox>(cell);
+            if (editor is null) return;
+            editor.Focus();
+            editor.SelectAll();
+        }, DispatcherPriority.Input);
         e.Handled = true;
     }
 
     private void SourceGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
     {
         if (e.EditAction != DataGridEditAction.Commit || e.Column != SourceFileNameColumn ||
-            e.Row.Item is not RenamePlanItem item || e.EditingElement is not TextBox editor) return;
+            e.Row.Item is not RenamePlanItem item) return;
+        var editor = e.EditingElement as TextBox ?? FindVisualChild<TextBox>(e.EditingElement);
+        if (editor is null) return;
         var newName = editor.Text;
         e.Cancel = true;
         Dispatcher.BeginInvoke(() =>
@@ -733,6 +870,18 @@ public partial class MainWindow : Window
         {
             if (current is T match) return match;
             current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) return match;
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null) return descendant;
         }
         return null;
     }
@@ -872,6 +1021,7 @@ public partial class MainWindow : Window
     {
         _settings.UseDarkMode = ViewDarkModeMenuItem.IsChecked;
         ThemeService.Apply(_settings.UseDarkMode);
+        ThemeService.ApplyToTitleBar(this, _settings.UseDarkMode);
         TrySaveSettings();
         StatusTextBlock.Text = _settings.UseDarkMode ? "Dark mode enabled." : "Light mode enabled.";
     }

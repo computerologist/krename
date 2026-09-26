@@ -185,7 +185,7 @@ void BracketWildcardRegexTest()
             [
                 new TextReplacementRule
                 {
-                    Find = @"^google[.]com  - \[[^]]*\]$",
+                    Find = @"^google[.]com\s+-\s+\[[^]]+\]$",
                     ReplaceWith = "matched",
                     MatchCase = true,
                     UseRegex = true

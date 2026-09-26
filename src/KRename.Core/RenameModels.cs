@@ -12,9 +12,7 @@ public sealed class TextReplacementRule
     public string ReplaceWith { get; set; } = "";
     public bool MatchCase { get; set; }
     public bool UseRegex { get; set; }
-    public string Display => $"{Find}  →  {ReplaceWith}"
-        + (UseRegex ? "  (regex)" : "")
-        + (MatchCase ? "  (case-sensitive)" : "");
+    public string Display => $"{Find}  →  {ReplaceWith}{(MatchCase ? "  (case-sensitive)" : "")}";
 }
 
 public sealed class RenameOptions

@@ -4,6 +4,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
 using KRename.App;
 using KRename.Core;
 
@@ -25,6 +27,7 @@ internal static class Program
         Run("Saved recurse state loads nested files", SavedRecurseLoadsNestedFiles);
         Run("Empty top-level scans explain how to enable recursion", EmptyTopLevelExplainsRecursion);
         Run("Editable rename fields retain dropdown history", EditableFieldsRetainHistory);
+        Run("Selecting a file-mask history item refreshes both panes", MaskHistorySelectionRefreshes);
         Run("A literal-space filename rule appears in the preview", LiteralSpaceRuleAppearsInPreview);
         Run("A per-filter regex matches variable bracket contents", PerFilterRegexMatchesBracketContents);
         Run("Replacement filters can be loaded and reordered", ReplacementFiltersLoadAndReorder);
@@ -34,6 +37,7 @@ internal static class Program
         Run("Applying a rename refreshes the current lists", ApplyRenameRefreshesLists);
         Run("Direct filename edits rename and refresh", DirectFilenameEditRefreshes);
         Run("Folder tree nodes load child directories lazily", FolderTreeLoadsChildren);
+        Run("Folder tree expands and selects the active source path", FolderTreeTracksActiveSource);
         Run("Dark mode and the options splitter are enabled by default", DarkModeAndSplitterDefaults);
 
         if (Failures.Count > 0)
@@ -185,17 +189,35 @@ internal static class Program
         });
     }
 
+    private static void MaskHistorySelectionRefreshes()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "keep.txt"), "1");
+            File.WriteAllText(Path.Combine(first, "skip.jpg"), "2");
+            var settings = Settings(first, first);
+            settings.FieldHistory["FileMask"] = ["*.txt", "*.*"];
+            var window = new MainWindow(settings, persistSettings: false);
+            var mask = Control<ComboBox>(window, "MaskTextBox");
+            mask.SelectedItem = "*.txt";
+
+            Invoke(window, "Mask_DropDownClosed", mask, EventArgs.Empty);
+
+            Equal("keep.txt", Plan(window, "SourceGrid").Single().CurrentName);
+            Equal("keep.txt", Plan(window, "PreviewGrid").Single().CurrentName);
+        });
+    }
+
     private static void PerFilterRegexMatchesBracketContents()
     {
         WithTempFolders((first, second) =>
         {
             File.WriteAllText(Path.Combine(first, "google.com  - [YSDUI#sd].txt"), "1");
             var window = new MainWindow(Settings(first, first), persistSettings: false);
-            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com  - \[[^]]*\]$";
+            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com\s+-\s+\[[^]]+\]$";
             Control<ComboBox>(window, "NameReplaceTextBox").Text = "matched";
             Control<CheckBox>(window, "NameRuleRegexCheckBox").IsChecked = true;
             Control<Button>(window, "AddNameRuleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Equal("matched.txt", Plan(window, "PreviewGrid").Single().NewName);
         });
@@ -319,15 +341,32 @@ internal static class Program
             File.WriteAllText(Path.Combine(first, "old.txt"), "1");
             var journal = Path.Combine(Path.GetDirectoryName(first)!, "edit-journal.json");
             var window = new MainWindow(Settings(first, first), persistSettings: false, showDialogs: false, engine: new RenameEngine(journal));
-            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            var item = Plan(window, "SourceGrid").Single();
-            var method = typeof(MainWindow).GetMethod("RenameSingleSourceFile", BindingFlags.Instance | BindingFlags.NonPublic)
-                         ?? throw new Exception("Direct rename handler was not found.");
+            window.Show();
+            try
+            {
+                var grid = Control<DataGrid>(window, "SourceGrid");
+                var item = Plan(window, "SourceGrid").Single();
+                grid.SelectedItem = item;
+                grid.ScrollIntoView(item);
+                grid.UpdateLayout();
+                grid.CurrentCell = new DataGridCellInfo(item, grid.Columns[0]);
+                True(grid.BeginEdit(), "The filename cell should enter edit mode.");
+                grid.UpdateLayout();
+                var row = grid.ItemContainerGenerator.ContainerFromItem(item) as DataGridRow
+                          ?? throw new Exception("The filename row was not materialized.");
+                var editor = FindVisualChild<TextBox>(row)
+                             ?? throw new Exception("The filename editor was not created.");
+                editor.Text = "new.txt";
+                _ = grid.CommitEdit(DataGridEditingUnit.Cell, exitEditingMode: true);
+                DrainDispatcher(window.Dispatcher);
 
-            method.Invoke(window, [item, "new.txt"]);
-
-            True(File.Exists(Path.Combine(first, "new.txt")), "The direct filename edit should rename the file.");
-            Equal("new.txt", Plan(window, "SourceGrid").Single().CurrentName);
+                True(File.Exists(Path.Combine(first, "new.txt")), "The committed cell edit should rename the file.");
+                Equal("new.txt", Plan(window, "SourceGrid").Single().CurrentName);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
@@ -344,6 +383,29 @@ internal static class Program
             True(node.Children.Any(x => string.Equals(x.FullPath, child, StringComparison.OrdinalIgnoreCase)),
                 "The expanded tree node should contain its child directory.");
             True(node.Children.All(x => !x.IsPlaceholder), "The loading placeholder should be removed after expansion.");
+        });
+    }
+
+    private static void FolderTreeTracksActiveSource()
+    {
+        WithTempFolders((first, second) =>
+        {
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+
+            Invoke(window, "ExpandFolderTreeTo", first);
+
+            var rootPath = Path.GetPathRoot(first) ?? throw new Exception("The test path has no drive root.");
+            var current = window.FolderRoots.Single(x =>
+                string.Equals(Path.GetFullPath(x.FullPath), Path.GetFullPath(rootPath), StringComparison.OrdinalIgnoreCase));
+            var relative = Path.GetRelativePath(current.FullPath, first);
+            foreach (var part in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+            {
+                True(current.IsExpanded, $"Tree node '{current.FullPath}' should be expanded.");
+                var expected = Path.Combine(current.FullPath, part);
+                current = current.Children.Single(x => !x.IsPlaceholder &&
+                    string.Equals(Path.GetFullPath(x.FullPath), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase));
+            }
+            True(current.IsSelected, "The active source folder should be selected in the tree.");
         });
     }
 
@@ -397,6 +459,25 @@ internal static class Program
         var method = typeof(MainWindow).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
                      ?? throw new Exception($"Handler '{methodName}' was not found.");
         return method.Invoke(window, arguments);
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) return match;
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null) return descendant;
+        }
+        return null;
+    }
+
+    private static void DrainDispatcher(Dispatcher dispatcher)
+    {
+        var frame = new DispatcherFrame();
+        dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     private static T Control<T>(MainWindow window, string name) where T : class =>

@@ -1,4 +1,6 @@
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 
 namespace KRename.App;
@@ -59,4 +61,17 @@ public static class ThemeService
         foreach (var (key, color) in darkMode ? Dark : Light)
             Application.Current.Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
     }
+
+    public static void ApplyToTitleBar(Window window, bool darkMode)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle == IntPtr.Zero) return;
+        var enabled = darkMode ? 1 : 0;
+        if (DwmSetWindowAttribute(handle, 20, ref enabled, sizeof(int)) != 0)
+            _ = DwmSetWindowAttribute(handle, 19, ref enabled, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int valueSize);
 }

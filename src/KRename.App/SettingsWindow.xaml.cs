@@ -11,8 +11,9 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow(AppSettings settings)
     {
-        InitializeComponent();
         _settings = settings.Copy();
+        InitializeComponent();
+        SourceInitialized += (_, _) => ThemeService.ApplyToTitleBar(this, _settings.UseDarkMode);
         EnableLoggingCheckBox.IsChecked = _settings.EnableLogging;
         LogPathTextBox.Text = string.IsNullOrWhiteSpace(_settings.LogFilePath)
             ? SettingsService.DefaultLogFilePath

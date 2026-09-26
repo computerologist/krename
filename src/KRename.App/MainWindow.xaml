@@ -69,7 +69,8 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="File mask / search pattern" Margin="2,0,0,5" Foreground="{DynamicResource TextSecondaryBrush}" />
                 <ComboBox x:Name="MaskTextBox" Grid.Row="1" Grid.Column="0" Text="*.*" IsEditable="True" IsTextSearchEnabled="False"
-                          ToolTip="File mask; use semicolons for multiple masks" KeyDown="RefreshField_KeyDown" />
+                          ToolTip="File mask; use semicolons for multiple masks" KeyDown="RefreshField_KeyDown"
+                          DropDownClosed="Mask_DropDownClosed" />
                 <CheckBox x:Name="RecursiveCheckBox" Grid.Row="1" Grid.Column="1" Content="Include subfolders" Margin="16,0,6,0" />
                 <Button x:Name="LoadRefreshButton" Grid.Row="1" Grid.Column="2" Content="Load / refresh files" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="PreviewButton_Click" />
             </Grid>
@@ -94,6 +95,8 @@
                             <ContextMenu>
                                 <MenuItem Header="Use as source folder" Click="UseTreeFolderAsSource_Click" />
                                 <MenuItem Header="Use as output folder" Click="UseTreeFolderAsOutput_Click" />
+                                <Separator />
+                                <MenuItem Header="Open folder in Explorer" Click="OpenTreeFolderInExplorer_Click" />
                             </ContextMenu>
                         </TreeView.ContextMenu>
                         <TreeView.ItemTemplate>
@@ -107,6 +110,8 @@
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
@@ -131,7 +136,7 @@
                               CellEditEnding="SourceGrid_CellEditEnding" PreviewMouseRightButtonDown="SourceGrid_PreviewMouseRightButtonDown">
                         <DataGrid.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Open containing folder in Explorer" Click="OpenSelectedFileInExplorer_Click" />
+                                <MenuItem Header="Show this file in Explorer" Click="OpenSelectedFileInExplorer_Click" />
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
@@ -233,7 +238,7 @@
                                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,7,0,0">
                                         <CheckBox x:Name="NameRuleCaseSensitiveCheckBox" Content="Case-sensitive match" />
                                         <CheckBox x:Name="NameRuleRegexCheckBox" Content="Regular expression" Margin="14,0,0,0"
-                                                  ToolTip="Example: ^google[.]com  - \[[^]]*\]$" />
+                                                  ToolTip="Tick before Add. The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\]$" />
                                     </WrapPanel>
                                 </Grid>
                                 <ListBox x:Name="NameRulesList" Grid.Row="1" Margin="0,8">

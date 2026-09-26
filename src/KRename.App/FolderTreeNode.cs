@@ -1,17 +1,33 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace KRename.App;
 
-public sealed class FolderTreeNode
+public sealed class FolderTreeNode : INotifyPropertyChanged
 {
     private bool _loaded;
+    private bool _isExpanded;
+    private bool _isSelected;
 
     public string FullPath { get; }
     public string DisplayName { get; }
     public string IconGlyph { get; }
     public bool IsPlaceholder { get; }
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetField(ref _isExpanded, value);
+    }
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetField(ref _isSelected, value);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public FolderTreeNode(string path, string? displayName = null)
     {
@@ -47,4 +63,11 @@ public sealed class FolderTreeNode
     }
 
     private static FolderTreeNode Placeholder() => new();
+
+    private void SetField(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
+    {
+        if (field == value) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }

@@ -58,9 +58,19 @@ public static class ThemeService
     public static void Apply(bool darkMode)
     {
         if (Application.Current is null) return;
-        foreach (var (key, color) in darkMode ? Dark : Light)
+        var palette = darkMode ? Dark : Light;
+        foreach (var (key, color) in palette)
             Application.Current.Resources[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        Application.Current.Resources[SystemColors.ControlBrushKey] = Brush(palette["SurfaceAltBrush"]);
+        Application.Current.Resources[SystemColors.ControlTextBrushKey] = Brush(palette["TextPrimaryBrush"]);
+        Application.Current.Resources[SystemColors.MenuBrushKey] = Brush(palette["SurfaceBrush"]);
+        Application.Current.Resources[SystemColors.MenuTextBrushKey] = Brush(palette["TextPrimaryBrush"]);
+        Application.Current.Resources[SystemColors.HighlightBrushKey] = Brush(palette["AccentBrush"]);
+        Application.Current.Resources[SystemColors.HighlightTextBrushKey] = Brushes.White;
     }
+
+    private static SolidColorBrush Brush(string color) =>
+        new((Color)ColorConverter.ConvertFromString(color));
 
     public static void ApplyToTitleBar(Window window, bool darkMode)
     {

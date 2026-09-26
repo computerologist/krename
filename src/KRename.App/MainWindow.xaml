@@ -128,7 +128,7 @@
                         <Button Grid.Column="1" Content="Browse…" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="BrowseButton_Click" />
                     </Grid>
                     <Border DockPanel.Dock="Top" Background="{DynamicResource BeforeHeaderBrush}" Padding="12,8">
-                        <TextBlock Text="BEFORE — source files (double-click a name to edit)" FontWeight="SemiBold" />
+                        <TextBlock Text="Source" FontWeight="SemiBold" />
                     </Border>
                     <DataGrid x:Name="SourceGrid" AutoGenerateColumns="False" IsReadOnly="False" CanUserAddRows="False" BorderThickness="0"
                               GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
@@ -167,7 +167,7 @@
                                   Click="UseSourceOutput_Click" />
                     </Grid>
                     <Border DockPanel.Dock="Top" Background="{DynamicResource AfterHeaderBrush}" Padding="12,8">
-                        <TextBlock Text="AFTER — rename preview" FontWeight="SemiBold" />
+                        <TextBlock Text="Target Preview" FontWeight="SemiBold" />
                     </Border>
                     <DataGrid x:Name="PreviewGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" BorderThickness="0"
                               GridLinesVisibility="Horizontal" AlternatingRowBackground="{DynamicResource AlternateRowBrush}" RowHeaderWidth="0"
@@ -238,7 +238,7 @@
                                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,7,0,0">
                                         <CheckBox x:Name="NameRuleCaseSensitiveCheckBox" Content="Case-sensitive match" />
                                         <CheckBox x:Name="NameRuleRegexCheckBox" Content="Regular expression" Margin="14,0,0,0"
-                                                  ToolTip="Tick before Add. The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\]$" />
+                                                  ToolTip="The pattern applies to the filename without its extension. Example: ^google[.]com\s+-\s+\[[^]]+\].*$" />
                                     </WrapPanel>
                                 </Grid>
                                 <ListBox x:Name="NameRulesList" Grid.Row="1" Margin="0,8">

@@ -212,14 +212,14 @@ internal static class Program
     {
         WithTempFolders((first, second) =>
         {
-            File.WriteAllText(Path.Combine(first, "google.com  - [YSDUI#sd].txt"), "1");
+            File.WriteAllText(Path.Combine(first, "google.com - [sample123] trailing title_edited.mp4"), "1");
             var window = new MainWindow(Settings(first, first), persistSettings: false);
-            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com\s+-\s+\[[^]]+\]$";
+            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com\s+-\s+\[[^]]+\].*$";
             Control<ComboBox>(window, "NameReplaceTextBox").Text = "matched";
             Control<CheckBox>(window, "NameRuleRegexCheckBox").IsChecked = true;
             Control<Button>(window, "AddNameRuleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-            Equal("matched.txt", Plan(window, "PreviewGrid").Single().NewName);
+            Equal("matched.mp4", Plan(window, "PreviewGrid").Single().NewName);
         });
     }
 

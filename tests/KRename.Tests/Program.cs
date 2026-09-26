@@ -6,6 +6,7 @@ Run("Duplicate destinations are rejected", CollisionTest);
 Run("No-change rows are ignored while real changes apply", NoChangeRowsAreIgnoredTest);
 Run("Literal spaces can be replaced", LiteralSpaceReplacementTest);
 Run("Bracket contents can be matched with a regular-expression wildcard", BracketWildcardRegexTest);
+Run("Replacement filters execute from top to bottom", ReplacementOrderTest);
 Run("Replacement rules support per-field case sensitivity", CaseSensitivityTest);
 Run("Recursive preview includes subfolders", RecursiveTest);
 Run("Output folders preserve recursive paths and support undo", OutputFolderTest);
@@ -180,19 +181,37 @@ void BracketWildcardRegexTest()
         var plan = new RenameEngine(journal).BuildPreview(new RenameOptions
         {
             Folder = folder,
-            UseRegex = true,
             FileNameReplacements =
             [
                 new TextReplacementRule
                 {
-                    Find = @"^google\.com  - \[[^\]]*\]$",
+                    Find = @"^google[.]com  - \[[^]]*\]$",
                     ReplaceWith = "matched",
-                    MatchCase = true
+                    MatchCase = true,
+                    UseRegex = true
                 }
             ]
         });
         Equal("matched.txt", plan.Single().NewName);
         Equal(RenameStatus.Ready, plan.Single().Status);
+    });
+}
+
+void ReplacementOrderTest()
+{
+    WithTempFolder((folder, journal) =>
+    {
+        File.WriteAllText(Path.Combine(folder, "a.txt"), "content");
+        var plan = new RenameEngine(journal).BuildPreview(new RenameOptions
+        {
+            Folder = folder,
+            FileNameReplacements =
+            [
+                new TextReplacementRule { Find = "a", ReplaceWith = "b", MatchCase = true },
+                new TextReplacementRule { Find = "b", ReplaceWith = "c", MatchCase = true }
+            ]
+        });
+        Equal("c.txt", plan.Single().NewName);
     });
 }
 

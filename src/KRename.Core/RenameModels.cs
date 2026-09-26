@@ -11,7 +11,10 @@ public sealed class TextReplacementRule
     public string Find { get; set; } = "";
     public string ReplaceWith { get; set; } = "";
     public bool MatchCase { get; set; }
-    public string Display => $"{Find}  →  {ReplaceWith}{(MatchCase ? "  (case-sensitive)" : "")}";
+    public bool UseRegex { get; set; }
+    public string Display => $"{Find}  →  {ReplaceWith}"
+        + (UseRegex ? "  (regex)" : "")
+        + (MatchCase ? "  (case-sensitive)" : "");
 }
 
 public sealed class RenameOptions

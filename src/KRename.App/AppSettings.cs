@@ -11,6 +11,7 @@ public sealed class AppSettings
     public bool RememberLastFolder { get; set; } = true;
     public bool RecurseByDefault { get; set; }
     public bool UseDarkMode { get; set; } = true;
+    public bool UseSourceAsOutput { get; set; } = true;
     public string LastFolder { get; set; } = "";
     public List<string> RecentFolders { get; set; } = [];
     public string LastOutputFolder { get; set; } = "";
@@ -31,6 +32,7 @@ public sealed class AppSettings
         RememberLastFolder = RememberLastFolder,
         RecurseByDefault = RecurseByDefault,
         UseDarkMode = UseDarkMode,
+        UseSourceAsOutput = UseSourceAsOutput,
         LastFolder = LastFolder,
         RecentFolders = [.. (RecentFolders ?? [])],
         LastOutputFolder = LastOutputFolder,

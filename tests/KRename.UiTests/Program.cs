@@ -21,10 +21,13 @@ internal static class Program
 
         Run("Startup loads the remembered folder into both panes", StartupLoadsRememberedFolder);
         Run("Recent-folder selection survives refresh and moves to the top", RecentFolderSelectionSurvivesRefresh);
+        Run("Selecting a source-folder history item refreshes immediately", SourceHistorySelectionRefreshesImmediately);
         Run("Saved recurse state loads nested files", SavedRecurseLoadsNestedFiles);
         Run("Empty top-level scans explain how to enable recursion", EmptyTopLevelExplainsRecursion);
         Run("Editable rename fields retain dropdown history", EditableFieldsRetainHistory);
         Run("A literal-space filename rule appears in the preview", LiteralSpaceRuleAppearsInPreview);
+        Run("A per-filter regex matches variable bracket contents", PerFilterRegexMatchesBracketContents);
+        Run("Replacement filters can be loaded and reordered", ReplacementFiltersLoadAndReorder);
         Run("Gray no-change rows do not disable applicable changes", GrayRowsDoNotDisableChanges);
         Run("Enter in folder and wildcard fields refreshes the file list", EnterRefreshesFileList);
         Run("Output folder preview preserves path and remembers history", OutputFolderPreviewAndHistory);
@@ -126,7 +129,7 @@ internal static class Program
 
             Equal(0, Plan(window, "SourceGrid").Count);
             var status = Control<TextBlock>(window, "StatusTextBlock").Text;
-            True(status.Contains("enable Recurse", StringComparison.OrdinalIgnoreCase), status);
+            True(status.Contains("enable Include subfolders", StringComparison.OrdinalIgnoreCase), status);
         });
     }
 
@@ -147,6 +150,26 @@ internal static class Program
         });
     }
 
+    private static void SourceHistorySelectionRefreshesImmediately()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "first.txt"), "1");
+            File.WriteAllText(Path.Combine(second, "second.txt"), "2");
+            var window = new MainWindow(Settings(first, first, second), persistSettings: false);
+            var folder = Control<ComboBox>(window, "FolderComboBox");
+            folder.SelectedItem = second;
+
+            Invoke(window, "SourceFolder_DropDownClosed", folder, EventArgs.Empty);
+
+            Equal(second, folder.Text);
+            Equal(second, Control<ComboBox>(window, "DestinationComboBox").Text);
+            True(Control<CheckBox>(window, "UseSourceOutputCheckBox").IsChecked == true,
+                "Automatic output should remain enabled when the source history changes.");
+            Equal("second.txt", Plan(window, "SourceGrid").Single().CurrentName);
+        });
+    }
+
     private static void LiteralSpaceRuleAppearsInPreview()
     {
         WithTempFolders((first, second) =>
@@ -159,6 +182,52 @@ internal static class Program
             Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Equal("some_file.txt", Plan(window, "PreviewGrid").Single().NewName);
+        });
+    }
+
+    private static void PerFilterRegexMatchesBracketContents()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "google.com  - [YSDUI#sd].txt"), "1");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+            Control<ComboBox>(window, "NameFindTextBox").Text = @"^google[.]com  - \[[^]]*\]$";
+            Control<ComboBox>(window, "NameReplaceTextBox").Text = "matched";
+            Control<CheckBox>(window, "NameRuleRegexCheckBox").IsChecked = true;
+            Control<Button>(window, "AddNameRuleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Equal("matched.txt", Plan(window, "PreviewGrid").Single().NewName);
+        });
+    }
+
+    private static void ReplacementFiltersLoadAndReorder()
+    {
+        WithTempFolders((first, second) =>
+        {
+            File.WriteAllText(Path.Combine(first, "a.txt"), "1");
+            var window = new MainWindow(Settings(first, first), persistSettings: false);
+            var find = Control<ComboBox>(window, "NameFindTextBox");
+            var replace = Control<ComboBox>(window, "NameReplaceTextBox");
+            var add = Control<Button>(window, "AddNameRuleButton");
+            find.Text = "a";
+            replace.Text = "b";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            find.Text = "b";
+            replace.Text = "c";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Control<Button>(window, "LoadRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Equal("c.txt", Plan(window, "PreviewGrid").Single().NewName);
+
+            var rules = Control<ListBox>(window, "NameRulesList").Items.Cast<TextReplacementRule>().ToList();
+            var loadButton = new Button { Tag = rules[0] };
+            Invoke(window, "LoadNameRule_Click", loadButton, new RoutedEventArgs());
+            Equal("a", find.Text);
+            Equal("b", replace.Text);
+
+            var moveButton = new Button { Tag = rules[1] };
+            Invoke(window, "MoveNameRuleUp_Click", moveButton, new RoutedEventArgs());
+            Equal("b.txt", Plan(window, "PreviewGrid").Single().NewName);
         });
     }
 
@@ -208,6 +277,9 @@ internal static class Program
             File.WriteAllText(Path.Combine(first, "one.txt"), "1");
             var settings = Settings(first, first);
             var window = new MainWindow(settings, persistSettings: false);
+            var useSource = Control<CheckBox>(window, "UseSourceOutputCheckBox");
+            useSource.IsChecked = false;
+            useSource.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Control<ComboBox>(window, "DestinationComboBox").Text = second;
             Control<ComboBox>(window, "PrefixTextBox").Text = "x-";
 
@@ -318,6 +390,13 @@ internal static class Program
         {
             RoutedEvent = Keyboard.KeyDownEvent
         });
+    }
+
+    private static object? Invoke(MainWindow window, string methodName, params object[] arguments)
+    {
+        var method = typeof(MainWindow).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+                     ?? throw new Exception($"Handler '{methodName}' was not found.");
+        return method.Invoke(window, arguments);
     }
 
     private static T Control<T>(MainWindow window, string name) where T : class =>

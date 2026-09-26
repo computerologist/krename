@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly bool _showDialogs;
     private IReadOnlyList<RenamePlanItem> _currentPlan = [];
     private AppSettings _settings;
+    private string _manualOutputFolder = "";
 
     public ObservableCollection<FolderTreeNode> FolderRoots => _folderRoots;
 
@@ -60,9 +61,11 @@ public partial class MainWindow : Window
         foreach (var folder in _settings.RecentOutputFolders ?? [])
             if (Directory.Exists(folder) && !_recentOutputFolders.Contains(folder, StringComparer.OrdinalIgnoreCase)) _recentOutputFolders.Add(folder);
         DestinationComboBox.ItemsSource = _recentOutputFolders;
-        DestinationComboBox.Text = _settings.RememberLastFolder && Directory.Exists(_settings.LastOutputFolder)
+        _manualOutputFolder = _settings.RememberLastFolder && Directory.Exists(_settings.LastOutputFolder)
             ? _settings.LastOutputFolder
             : "";
+        UseSourceOutputCheckBox.IsChecked = _settings.UseSourceAsOutput;
+        UpdateOutputMode();
         RecursiveCheckBox.IsChecked = _settings.RecurseByDefault;
         ViewDarkModeMenuItem.IsChecked = _settings.UseDarkMode;
         CustomDatePicker.SelectedDate = DateTime.Today;
@@ -99,7 +102,7 @@ public partial class MainWindow : Window
 
     private void BrowseOutputButton_Click(object sender, RoutedEventArgs e)
     {
-        var outputFolder = GetSelectedOutputFolder();
+        var outputFolder = _manualOutputFolder;
         var dialog = new OpenFolderDialog
         {
             Title = "Choose an optional output folder",
@@ -108,16 +111,35 @@ public partial class MainWindow : Window
                 : Directory.Exists(GetSelectedFolder()) ? GetSelectedFolder() : null
         };
         if (dialog.ShowDialog(this) != true) return;
+        UseSourceOutputCheckBox.IsChecked = false;
+        _settings.UseSourceAsOutput = false;
+        _manualOutputFolder = dialog.FolderName;
         DestinationComboBox.Text = dialog.FolderName;
+        UpdateOutputMode();
         RememberCurrentFolder();
         BuildPreview();
     }
 
-    private void ClearOutputFolder_Click(object sender, RoutedEventArgs e)
+    private void UseSourceOutput_Click(object sender, RoutedEventArgs e)
     {
-        DestinationComboBox.Text = "";
+        if (UseSourceOutputCheckBox.IsChecked == true)
+        {
+            var current = DestinationComboBox.Text.Trim();
+            if (!string.IsNullOrEmpty(current) && !string.Equals(current, GetSelectedFolder(), StringComparison.OrdinalIgnoreCase))
+                _manualOutputFolder = current;
+        }
+        _settings.UseSourceAsOutput = UseSourceOutputCheckBox.IsChecked == true;
+        UpdateOutputMode();
         RememberCurrentFolder();
         BuildPreview();
+    }
+
+    private void UpdateOutputMode()
+    {
+        var automatic = UseSourceOutputCheckBox.IsChecked == true;
+        DestinationComboBox.IsEnabled = !automatic;
+        OutputBrowseButton.IsEnabled = !automatic;
+        DestinationComboBox.Text = automatic ? GetSelectedFolder() : _manualOutputFolder;
     }
 
     private void AddNameRule_Click(object sender, RoutedEventArgs e)
@@ -131,7 +153,8 @@ public partial class MainWindow : Window
         {
             Find = NameFindTextBox.Text,
             ReplaceWith = NameReplaceTextBox.Text,
-            MatchCase = NameRuleCaseSensitiveCheckBox.IsChecked == true
+            MatchCase = NameRuleCaseSensitiveCheckBox.IsChecked == true,
+            UseRegex = NameRuleRegexCheckBox.IsChecked == true
         });
         RememberHistoryValue(NameFindTextBox, "NameFind");
         RememberHistoryValue(NameReplaceTextBox, "NameReplace");
@@ -152,6 +175,18 @@ public partial class MainWindow : Window
 
     private void ClearNameRules_Click(object sender, RoutedEventArgs e) => _nameRules.Clear();
 
+    private void LoadNameRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: TextReplacementRule rule }) return;
+        NameFindTextBox.Text = rule.Find;
+        NameReplaceTextBox.Text = rule.ReplaceWith;
+        NameRuleCaseSensitiveCheckBox.IsChecked = rule.MatchCase;
+        NameRuleRegexCheckBox.IsChecked = rule.UseRegex;
+    }
+
+    private void MoveNameRuleUp_Click(object sender, RoutedEventArgs e) => MoveRule(_nameRules, sender, -1);
+    private void MoveNameRuleDown_Click(object sender, RoutedEventArgs e) => MoveRule(_nameRules, sender, 1);
+
     private void AddExtensionRule_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(ExtensionFindTextBox.Text))
@@ -163,7 +198,8 @@ public partial class MainWindow : Window
         {
             Find = ExtensionFindTextBox.Text.TrimStart('.'),
             ReplaceWith = ExtensionReplaceTextBox.Text.TrimStart('.'),
-            MatchCase = ExtensionRuleCaseSensitiveCheckBox.IsChecked == true
+            MatchCase = ExtensionRuleCaseSensitiveCheckBox.IsChecked == true,
+            UseRegex = ExtensionRuleRegexCheckBox.IsChecked == true
         });
         RememberHistoryValue(ExtensionFindTextBox, "ExtensionFind");
         RememberHistoryValue(ExtensionReplaceTextBox, "ExtensionReplace");
@@ -184,6 +220,43 @@ public partial class MainWindow : Window
 
     private void ClearExtensionRules_Click(object sender, RoutedEventArgs e) => _extensionRules.Clear();
 
+    private void LoadExtensionRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: TextReplacementRule rule }) return;
+        ExtensionFindTextBox.Text = rule.Find;
+        ExtensionReplaceTextBox.Text = rule.ReplaceWith;
+        ExtensionRuleCaseSensitiveCheckBox.IsChecked = rule.MatchCase;
+        ExtensionRuleRegexCheckBox.IsChecked = rule.UseRegex;
+    }
+
+    private void MoveExtensionRuleUp_Click(object sender, RoutedEventArgs e) => MoveRule(_extensionRules, sender, -1);
+    private void MoveExtensionRuleDown_Click(object sender, RoutedEventArgs e) => MoveRule(_extensionRules, sender, 1);
+
+    private void MoveRule(ObservableCollection<TextReplacementRule> rules, object sender, int offset)
+    {
+        if (sender is not Button { Tag: TextReplacementRule rule }) return;
+        var currentIndex = rules.IndexOf(rule);
+        var newIndex = currentIndex + offset;
+        if (currentIndex < 0 || newIndex < 0 || newIndex >= rules.Count) return;
+        rules.Move(currentIndex, newIndex);
+        RefreshPreviewIfFolderValid();
+    }
+
+    private void RuleOptionChanged_Click(object sender, RoutedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            NameRulesList.Items.Refresh();
+            ExtensionRulesList.Items.Refresh();
+            RefreshPreviewIfFolderValid();
+        });
+    }
+
+    private void RefreshPreviewIfFolderValid()
+    {
+        if (Directory.Exists(GetSelectedFolder())) BuildPreview();
+    }
+
     private void PreviewButton_Click(object sender, RoutedEventArgs e) => BuildPreview();
 
     private void BuildPreview()
@@ -193,6 +266,7 @@ public partial class MainWindow : Window
         {
             var selectedFolder = GetSelectedFolder();
             FolderComboBox.Text = selectedFolder;
+            if (UseSourceOutputCheckBox.IsChecked == true) DestinationComboBox.Text = selectedFolder;
             var sequenceStart = ParseInteger(SequenceStartTextBox.Text, "Sequence start", allowNegative: false);
             var sequenceDigits = ParseInteger(SequenceDigitsTextBox.Text, "Sequence digits", allowNegative: false);
             var customDate = CustomDatePicker.SelectedDate ?? DateTime.Today;
@@ -209,7 +283,7 @@ public partial class MainWindow : Window
                 EntireName = EntireNameTextBox.Text,
                 FileNameReplacements = _nameRules.ToList(),
                 ExtensionReplacements = _extensionRules.ToList(),
-                UseRegex = RegexCheckBox.IsChecked == true,
+                UseRegex = false,
                 Prefix = PrefixTextBox.Text,
                 Suffix = SuffixTextBox.Text,
                 CaseTransform = CaseLowerRadio.IsChecked == true
@@ -261,7 +335,7 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = _currentPlan.Count == 0
                 ? RecursiveCheckBox.IsChecked == true
                     ? "No files matched the selected folder and wildcard, including subfolders."
-                    : "No files matched at the folder's top level. If its files are in subfolders, enable Recurse into subfolders and refresh."
+                    : "No files matched at the folder's top level. If its files are in subfolders, enable Include subfolders and refresh."
                 : errors > 0
                     ? $"{_currentPlan.Count} files loaded; {errors} red error row{(errors == 1 ? "" : "s")} block the rename. {unchanged} gray no-change row{(unchanged == 1 ? " is" : "s are")} ignored."
                     : ready > 0
@@ -363,7 +437,9 @@ public partial class MainWindow : Window
         {
             _settings.LastFolder = FolderComboBox.Text.Trim();
             AddRecentFolder(_settings.LastFolder);
-            _settings.LastOutputFolder = DestinationComboBox.Text.Trim();
+            _settings.UseSourceAsOutput = UseSourceOutputCheckBox.IsChecked == true;
+            if (UseSourceOutputCheckBox.IsChecked != true) _manualOutputFolder = DestinationComboBox.Text.Trim();
+            _settings.LastOutputFolder = _manualOutputFolder;
             AddRecentOutputFolder(_settings.LastOutputFolder);
         }
         else
@@ -446,6 +522,7 @@ public partial class MainWindow : Window
     private void RememberCurrentFolder()
     {
         _settings.RecurseByDefault = RecursiveCheckBox.IsChecked == true;
+        _settings.UseSourceAsOutput = UseSourceOutputCheckBox.IsChecked == true;
         var selectedFolder = GetSelectedFolder();
         if (!_settings.RememberLastFolder || !Directory.Exists(selectedFolder))
         {
@@ -454,9 +531,9 @@ public partial class MainWindow : Window
         }
         _settings.LastFolder = selectedFolder;
         AddRecentFolder(_settings.LastFolder);
-        var outputFolder = GetSelectedOutputFolder();
-        _settings.LastOutputFolder = outputFolder ?? "";
-        if (outputFolder is not null) AddRecentOutputFolder(outputFolder);
+        if (UseSourceOutputCheckBox.IsChecked != true) _manualOutputFolder = DestinationComboBox.Text.Trim();
+        _settings.LastOutputFolder = _manualOutputFolder;
+        if (Directory.Exists(_manualOutputFolder)) AddRecentOutputFolder(_manualOutputFolder);
         TrySaveSettings();
     }
 
@@ -488,6 +565,7 @@ public partial class MainWindow : Window
 
     private string? GetSelectedOutputFolder()
     {
+        if (UseSourceOutputCheckBox.IsChecked == true) return null;
         var typedFolder = DestinationComboBox.Text.Trim();
         if (!string.IsNullOrEmpty(typedFolder)) return typedFolder;
         var selected = (DestinationComboBox.SelectedItem as string)?.Trim();
@@ -508,7 +586,7 @@ public partial class MainWindow : Window
         else if (existingIndex < 0) _recentOutputFolders.Insert(0, folder);
         while (_recentOutputFolders.Count > 12) _recentOutputFolders.RemoveAt(_recentOutputFolders.Count - 1);
         _settings.RecentOutputFolders = [.. _recentOutputFolders];
-        DestinationComboBox.Text = folder;
+        if (UseSourceOutputCheckBox.IsChecked != true) DestinationComboBox.Text = folder;
     }
 
     private void InitializeFolderTree()
@@ -551,9 +629,32 @@ public partial class MainWindow : Window
     private void UseTreeFolderAsOutput_Click(object sender, RoutedEventArgs e)
     {
         if (FolderTree.SelectedItem is not FolderTreeNode { IsPlaceholder: false } node) return;
+        UseSourceOutputCheckBox.IsChecked = false;
+        _settings.UseSourceAsOutput = false;
+        _manualOutputFolder = node.FullPath;
         DestinationComboBox.Text = node.FullPath;
+        UpdateOutputMode();
         RememberCurrentFolder();
         BuildPreview();
+    }
+
+    private void SourceFolder_DropDownClosed(object sender, EventArgs e)
+    {
+        if (FolderComboBox.SelectedItem is string selected) FolderComboBox.Text = selected;
+        if (Directory.Exists(GetSelectedFolder())) BuildPreview();
+    }
+
+    private void OutputFolder_DropDownClosed(object sender, EventArgs e)
+    {
+        if (DestinationComboBox.SelectedItem is string selected)
+        {
+            UseSourceOutputCheckBox.IsChecked = false;
+            _settings.UseSourceAsOutput = false;
+            _manualOutputFolder = selected;
+            DestinationComboBox.Text = selected;
+            UpdateOutputMode();
+        }
+        if (Directory.Exists(GetSelectedFolder())) BuildPreview();
     }
 
     private void SourceGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)

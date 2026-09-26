@@ -9,6 +9,7 @@ public sealed class FolderTreeNode
 
     public string FullPath { get; }
     public string DisplayName { get; }
+    public string IconGlyph { get; }
     public bool IsPlaceholder { get; }
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
 
@@ -17,6 +18,7 @@ public sealed class FolderTreeNode
         FullPath = path;
         DisplayName = displayName ?? Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrWhiteSpace(DisplayName)) DisplayName = path;
+        IconGlyph = string.Equals(Path.GetPathRoot(path), path, StringComparison.OrdinalIgnoreCase) ? "💽" : "📁";
         Children.Add(Placeholder());
     }
 
@@ -24,6 +26,7 @@ public sealed class FolderTreeNode
     {
         FullPath = "";
         DisplayName = "Loading…";
+        IconGlyph = "";
         IsPlaceholder = true;
         _loaded = true;
     }

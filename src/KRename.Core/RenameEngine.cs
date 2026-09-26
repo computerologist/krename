@@ -179,7 +179,7 @@ public sealed class RenameEngine
         foreach (var rule in rules.Where(x => !string.IsNullOrEmpty(x.Find)))
         {
             Regex? regex = null;
-            if (options.UseRegex)
+            if (options.UseRegex || rule.UseRegex)
             {
                 var regexOptions = rule.MatchCase ? RegexOptions.None : RegexOptions.IgnoreCase;
                 regex = new Regex(rule.Find, regexOptions, TimeSpan.FromSeconds(2));
